@@ -227,7 +227,8 @@ document.body.prepend(renderer.domElement);
 let rt;
 function makeRT(){
   if (rt) { rt.depthTexture.dispose(); rt.dispose(); }
-  const w = Math.max(64, Math.floor(innerWidth / P.pixelScale)), h = Math.max(64, Math.floor(innerHeight / P.pixelScale));
+  const sc = Math.min(innerWidth, innerHeight) < 600 ? 2 : P.pixelScale; // スマホは細かめのドットに
+  const w = Math.max(64, Math.floor(innerWidth / sc)), h = Math.max(64, Math.floor(innerHeight / sc));
   const dt = new THREE.DepthTexture(w, h); dt.type = THREE.UnsignedIntType;
   rt = new THREE.WebGLRenderTarget(w, h, {minFilter:THREE.NearestFilter, magFilter:THREE.NearestFilter, depthTexture:dt, depthBuffer:true});
   postMat.uniforms.tColor.value = rt.texture;
@@ -236,11 +237,11 @@ function makeRT(){
 }
 const postMat = new THREE.ShaderMaterial({
   uniforms:{ tColor:{value:null}, tDepth:{value:null}, res:{value:new THREE.Vector2()},
-    skyTop:{value:new THREE.Color()}, skyBot:{value:new THREE.Color()}, night:{value:0}, time:{value:0} },
+    skyTop:{value:new THREE.Color()}, skyBot:{value:new THREE.Color()}, night:{value:0}, time:{value:0}, edgeTh:{value:0.0016} },
   vertexShader:`varying vec2 vUv; void main(){ vUv=uv; gl_Position=vec4(position.xy,0.,1.); }`,
   fragmentShader:`
     uniform sampler2D tColor; uniform sampler2D tDepth; uniform vec2 res;
-    uniform vec3 skyTop; uniform vec3 skyBot; uniform float night; uniform float time;
+    uniform vec3 skyTop; uniform vec3 skyBot; uniform float night; uniform float time; uniform float edgeTh;
     varying vec2 vUv;
     float B2(vec2 a){ a=floor(a); return fract(a.x/2.+a.y*a.y*.75); }
     float B4(vec2 a){ return B2(.5*a)*.25 + B2(a); }
@@ -263,7 +264,7 @@ const postMat = new THREE.ShaderMaterial({
         float du = texture2D(tDepth, vUv + vec2(0.,px.y)).x;
         float dd = texture2D(tDepth, vUv - vec2(0.,px.y)).x;
         float m = max(max(dl,dr), max(du,dd));
-        float edge = step(0.0016, m - d);
+        float edge = step(edgeTh, m - d);
         col = mix(col, col*0.25 + vec3(0.03,0.02,0.07), edge);
       }
       // ポスタライズ＋ベイヤーディザ（レトロな色数に）
@@ -283,8 +284,10 @@ scene.background = new THREE.Color(0x000000);
 const cam = new THREE.OrthographicCamera(-1,1,1,-1,5,75);
 const camS = {yaw:Math.PI/4, tyaw:Math.PI/4, pitch:0.6, zoom:1, tzoom:1, shake:0};
 function updateCam(){
-  const h = 13 / camS.zoom, a = innerWidth / innerHeight;
+  const a = innerWidth / innerHeight, h = Math.max(13, 16 / a) / camS.zoom; // 縦長画面でも島が横に収まる
   cam.left = -h*a/2; cam.right = h*a/2; cam.top = h/2; cam.bottom = -h/2; cam.updateProjectionMatrix();
+  // 1ドットが表す世界の大きさに合わせて輪郭の閾値を変える（ズームアウトで地面が真っ黒にならないように）
+  postMat.uniforms.edgeTh.value = Math.max(0.0016, 3.2 * h / postMat.uniforms.res.value.y / (cam.far - cam.near));
   const d = 35, ty = -0.6;
   const sx = camS.shake ? rnd(-1,1)*camS.shake : 0, sy = camS.shake ? rnd(-1,1)*camS.shake : 0;
   cam.position.set(Math.sin(camS.yaw)*Math.cos(camS.pitch)*d + sx, ty + Math.sin(camS.pitch)*d + sy, Math.cos(camS.yaw)*Math.cos(camS.pitch)*d);
