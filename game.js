@@ -2926,8 +2926,8 @@ function showArrival(){
     '<p>'+(A.first ? L('持ってきたもの：<b>'+fmt(A.gold)+'G</b>・住民<b>'+A.n+'人</b>・干し草20。', 'You brought <b>'+fmt(A.gold)+'G</b>, <b>'+A.n+' residents</b> and 20 hay.') : L('住民<b>'+A.n+'人</b>を連れてきた。','You brought <b>'+A.n+' residents</b>.')) +
     (A.n ? L('連れてきた住民は無料で働いてくれる。',' They work without a hiring fee.') : '')+'</p>' +
     (A.first && ISLAND === 'dairy' ? '<p class="kv">'+L(
-      '・牧草をタップ、または<b>草刈り小屋</b>で干し草にする<br>・<b>牛舎</b>で干し草→牛乳<br>・牛乳は<b>バター</b>か<b>チーズ</b>に。チーズは<b>熟成蔵</b>でとても高くなる<br>・加工の建物には<b>岩塩</b>（ピンクの岩）がいる<br>・目標は <b>'+fmt(P.goal)+'G で空港を開き、品評会の飛行船を呼ぶ</b>こと',
-      '• Tap grass, or build a <b>Mowing Hut</b>, to make hay<br>• A <b>Cow Barn</b> turns hay into milk<br>• Milk becomes <b>butter</b> or <b>cheese</b>. An <b>Aging Cellar</b> makes cheese very valuable<br>• Workshops need <b>rock salt</b> (the pink rocks)<br>• Goal: <b>open an airport for '+fmt(P.goal)+'G and call the fair airship</b>')+'</p>' : '') +
+      '・牧草をタップ、または<b>草刈り小屋</b>で干し草にする<br>・<b>牛舎</b>で干し草→牛乳<br>・牛乳は<b>バター</b>か<b>チーズ</b>に。チーズは<b>熟成蔵</b>でとても高くなる<br>・バター小屋・チーズ工房・熟成蔵を建てるには<b>岩塩</b>（ピンクの岩）がいる<br>・目標は <b>'+fmt(P.goal)+'G で空港を開き、品評会の飛行船を呼ぶ</b>こと',
+      '• Tap grass, or build a <b>Mowing Hut</b>, to make hay<br>• A <b>Cow Barn</b> turns hay into milk<br>• Milk becomes <b>butter</b> or <b>cheese</b>. An <b>Aging Cellar</b> makes cheese very valuable<br>• Building a Churn House, Creamery or Cellar takes <b>rock salt</b> (the pink rocks)<br>• Goal: <b>open an airport for '+fmt(P.goal)+'G and call the fair airship</b>')+'</p>' : '') +
     '<div class="opts"><button class="opt" data-act="closeModal"><div class="n">▶ '+L('はじめる','Start')+'</div></button></div>');
   $('#modal').hidden = false;
 }
