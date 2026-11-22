@@ -4541,8 +4541,8 @@ function showArrival(){
 }
 function farmGuide(){
   return '<p class="kv">'+L(
-    '<b>この島は水と四季で育てる</b><br>・<b>空いている地面をタップ</b>して種をまく（建設の「田畑」からでも）<br>・<b>稲は川のとなり</b>、<b>そばは乾いた土</b>、<b>大豆は違う作物のとなり</b>が好き<br>・<b>湧き水か川をタップ</b>して揚水水車を上げると、<b>川を3マス好きな所に敷ける</b>（島を広げると上限+1）。夏は先の方が干上がる<br>・<b>道になっている所の畑は踏まれて育ちが悪い</b>（種まき中は赤く見える）<br>・季節は2日ずつ。<b>冬は何も育たない</b>ので、秋に貯めて加工でしのぐ<br>・実った畑はタップか<b>農家</b>で刈り取る。目標は <b>'+fmt(P.goal)+'G</b>',
-    '<b>This island runs on water and seasons</b><br>• <b>Tap open ground</b> to plant (or use Build → Fields)<br>• <b>Rice likes the river</b>, <b>buckwheat likes dry soil</b>, <b>soybeans like a different crop next door</b><br>• <b>Tap the spring or river</b> to upgrade the waterwheel: <b>3 river tiles per level, laid where you like</b> (expansions raise the limit). The far end dries up in summer<br>• <b>Crops on busy paths grow poorly</b> (shown red while planting)<br>• Seasons last 2 days. <b>Nothing grows in winter</b>, so stock up in autumn and craft<br>• Tap ripe fields, or staff a <b>Farmhouse</b>. Goal: <b>'+fmt(P.goal)+'G</b>')+'</p>';
+    '<b>この島は水と四季で育てる</b><br>・<b>空いている地面をタップ</b>して種をまく（建設の「田畑」からでも）<br>・<b>稲は川のとなり</b>、<b>そばは乾いた土</b>、<b>大豆は違う作物のとなり</b>が好き<br>・<b>湧き水の水車をタップ</b>して改良すると、<b>川を3マス好きな所に敷ける</b>（島を広げると上限+1）。夏は先の方が干上がる<br>・<b>道になっている所の畑は踏まれて育ちが悪い</b>（種まき中は赤く見える）<br>・季節は2日ずつ。<b>冬は何も育たない</b>ので、秋に貯めて加工でしのぐ<br>・実った畑はタップか<b>農家</b>で刈り取る。目標は <b>'+fmt(P.goal)+'G</b>',
+    '<b>This island runs on water and seasons</b><br>• <b>Tap open ground</b> to plant (or use Build → Fields)<br>• <b>Rice likes the river</b>, <b>buckwheat likes dry soil</b>, <b>soybeans like a different crop next door</b><br>• <b>Tap the waterwheel at the spring</b> to improve it: <b>3 river tiles per level, laid where you like</b> (expansions raise the limit). The far end dries up in summer<br>• <b>Crops on busy paths grow poorly</b> (shown red while planting)<br>• Seasons last 2 days. <b>Nothing grows in winter</b>, so stock up in autumn and craft<br>• Tap ripe fields, or staff a <b>Farmhouse</b>. Goal: <b>'+fmt(P.goal)+'G</b>')+'</p>';
 }
 function dairyGuide(){
   return '<p class="kv">'+L(
