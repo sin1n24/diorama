@@ -166,8 +166,8 @@ const UPGS = [
     d:['気球が来るたびに、選んだ品物を自動で売る','Each balloon visit auto-sells the goods you choose.']},
   {id:'dog',   n:['牧羊犬','Sheepdog'], isl:'dairy', cost:[6000],
     d:['輪の中の草がなくなると、鐘を近くの草地へ運んでくれる（いちばん良い場所とは限らない）','When the ring runs out of grass, the dog carries the bell to pasture nearby (not always the best spot).']},
-  {id:'pump',  n:['揚水水車','Waterwheel'], isl:'farm', cost:[500,1500,3500,7000,12000],
-    d:['上げるたびに川が自分で伸びる。建物はよけて曲がり、島の端で滝になり、次は枝分かれする','Each level makes the river grow by itself. It bends around buildings, falls off the edge, then branches.']},
+  {id:'pump',  n:['揚水水車','Waterwheel'], isl:'farm', cost:[400,1000,2200,4500,8000,11000,15000,20000,26000],
+    d:['1Lvごとに川3マス。好きな所に敷ける。島を広げると上限+1','Each level gives 3 river tiles to lay where you like. Each expansion raises the limit by 1.']},
   {id:'axe',   n:['よく切れる道具','Sharp Tools'], cost:[200,1200,5000],
     d:['クリックの収穫+1・伐採と採掘が速くなる','+1 per click; faster chopping and mining.']},
   {id:'carry', n:['運ぶ道具','Hauling Gear'], cost:[300,1500,6000], tiers:[
@@ -246,7 +246,7 @@ function newState(isl = ISLAND){
   if (farm){
     // 湧き水と短い川、はじめの田畑
     const at = (x,z) => z*W + x, put = (x,z,c) => s.cells[at(x,z)] = {r:Math.random(), ...c};
-    put(3,4,{t:'water', spring:true}); put(4,4,{t:'water', river:1}); put(5,4,{t:'water', river:1}); s.riverV = 2; s.riverTip = at(5,4);
+    put(3,4,{t:'water', spring:true}); put(4,4,{t:'water', river:1}); put(5,4,{t:'water', river:1}); s.riverV = 3; s.riverLeft = 0; s.riverTip = at(5,4);
     for (const [x,z] of [[4,3],[5,3],[4,5]]) put(x,z,{t:'sapling', crop:'rice', g:0.55});
     for (const [x,z] of [[7,6],[8,6],[7,7],[8,7],[9,7]]) put(x,z,{t:'tree', crop:'wheat', hp:4});
     for (const [x,z] of [[2,7],[3,7]]) put(x,z,{t:'sapling', crop:'veg', g:0.7});
@@ -1913,13 +1913,13 @@ function updateBell(dt){
 
 /* =========================================================
    川と四季（農耕の島ならではの仕組み）
-   ・揚水水車のLv（5まで）で川が自分で伸びる。建物はよけて曲がり、端に届けば滝、次のLvは枝分かれ。夏は先の方が干上がる
+   ・揚水水車の1Lvごとに川3マス。自分で敷く（はがして敷き直せる・おまかせも可）。島の端で終われば滝。島を広げると上限+1。夏は先の方が干上がる
    ・稲は水ぎわ、小麦は乾いた土、かぼちゃは違う作物の隣でよく育つ
    ・四季は2日ずつ。作物には得意な季節があり、冬はどれも育たない（貯めて加工でしのぐ）
    ========================================================= */
 const SEASON_DAYS = 2;
 const SEASONS = [['春','Spring'],['夏','Summer'],['秋','Autumn'],['冬','Winter']];
-const RIVER = {step:6, dry:0.25};          // 1Lvで伸びる長さ・夏に干上がる割合
+const RIVER = {step:3, base:5, start:2, dry:0.25};          // 1Lvでもらえる川・上限（島を広げるたび+1）・最初の長さ・夏に干上がる割合
 const CROPS = {
   wheat:{n:['小麦','Wheat'],       seed:4, T:95, s:[1.4,0.7,1.2,0], wet:0.25, dry:1,   d:['乾いた土が好き。春と秋に伸びる。川のとなりは苦手','Likes dry soil, spring and autumn. Hates being next to water.']},
   rice: {n:['稲','Rice'],          seed:6, T:95, s:[0.8,1.6,1.1,0], wet:1.4,  dry:0.08, d:['流れのある川のとなりで育つ。夏に伸びる','Grows beside flowing water. Loves summer.']},
@@ -1951,7 +1951,73 @@ function refreshWater(){
 }
 const atEdge = i => { const n = neigh4(i); return n.length < 4 || n.some(j => S.cells[j].t === 'void'); };
 // 次に川が通るマス。流せる場所がなければ null
-function planRiver(){
+const isFall = i => !S.cells[i].spring && atEdge(i) && neigh4(i).filter(j => S.cells[j].t === 'water').length <= 1;          // 島の端で終わる川は滝
+const pumpMax = () => RIVER.base + (S.expand || 0);
+const upgMax = u => u.id === 'pump' ? Math.min(u.cost.length, pumpMax()) : u.cost.length;
+const upgCost = (u, lv) => lv < upgMax(u) ? u.cost[lv] : undefined;
+function canLay(j){ return ['grass','sapling','tree','rock'].includes(S.cells[j].t) && neigh4(j).some(k => waterAll.includes(k)); }
+function canPeel(j){          // はがしても、ほかの川が全部つながったままなら、はがせる
+  const c = S.cells[j]; if (c.t !== 'water' || c.spring || !waterAll.includes(j)) return false;
+  const seen = new Set([waterAll[0]]), q = [waterAll[0]];
+  for (let k=0;k<q.length;k++) for (const n of neigh4(q[k])) if (n !== j && S.cells[n].t === 'water' && !seen.has(n)){ seen.add(n); q.push(n); }
+  return seen.size === waterAll.length - 1;
+}
+function riverWhy(i){
+  const c = S.cells[i];
+  if (c.t === 'void') return L('島の外です','Outside the island');
+  if (c.t === 'b' || c.t === 'occ') return L('建物がある','A building is here');
+  if (c.spring) return L('湧き水は動かせない','The spring cannot be changed');
+  if (c.t === 'water') return canPeel(i) ? '' : L('ここをはがすと下流が切れる。先の方からはがす','Lifting this would cut the river. Lift from the far end');
+  if (!canLay(i)) return L('川のとなりに敷く','Lay it next to the river');
+  return S.riverLeft > 0 ? '' : L('手持ちの川がない（水車を上げるか、川をタップしてはがす）','No tiles left (upgrade the waterwheel or tap the river to lift one)');
+}
+function useRiver(i){
+  const why = riverWhy(i);
+  if (why){ toast(why, 'bad'); return false; }
+  const p = wpos(i);
+  if (S.cells[i].t === 'water'){          // はがす
+    S.cells[i] = {t:'grass', r:Math.random()};
+    S.riverLeft++; S.stats.dug = Math.max(0, (S.stats.dug || 0) - 1);
+    if (S.riverTip === i) S.riverTip = neigh4(i).find(j => S.cells[j].t === 'water');
+    setCellMesh(i); refreshWater(); calcTraffic();
+    popAt(p.x, 0.7, p.z, L('はがした','Lifted')); sfx('ui');
+    return true;
+  }
+  growRiver({cells:[i]}); S.riverLeft--;
+  sfx('rock');
+  if (isFall(i)){ popAt(p.x, 0.9, p.z, L('滝になった！','A waterfall!'), 'g'); sfx('coin'); }
+  return true;
+}
+function autoRiver(){
+  let n = 0;
+  for (const t of riverCells()){          // 島を広げて消えた滝は、1マス先の新しい端で戻す
+    if (S.riverLeft < 1) break;
+    if (S.cells[t].spring || atEdge(t)) continue;
+    const up = neigh4(t).filter(j => S.cells[j].t === 'water'); if (up.length !== 1) continue;
+    const next = neigh4(t).filter(j => canLay(j) && atEdge(j) && neigh4(j).filter(k => S.cells[k].t === 'water').length === 1);
+    if (!next.length) continue;
+    growRiver({cells:[next.find(j => j - t === t - up[0]) ?? next[0]]}); S.riverLeft--; n++;
+  }
+  while (S.riverLeft > 0){
+    const p = planRiver(S.riverLeft); if (!p) break;
+    growRiver(p); S.riverLeft -= p.cells.length; n += p.cells.length;
+  }
+  if (n) sfx('rock');
+  else if (S.riverLeft > 0) toast(L('流せる場所がない（建物を動かすか、島を広げる）','No room to flow (move a building or expand the island)'), 'bad');
+  return n;
+}
+// 敷けるマスを光らせる
+const layMat = new THREE.MeshBasicMaterial({color:0x50c8ff, transparent:true, opacity:0.5, depthWrite:false});
+const layMesh = new THREE.InstancedMesh(new THREE.PlaneGeometry(0.86,0.86).rotateX(-Math.PI/2), layMat, W*W);
+layMesh.count = 0; layMesh.frustumCulled = false; scene.add(layMesh);
+function paintLay(){
+  if (mode?.kind !== 'river' || !S.riverLeft){ layMesh.count = 0; return; }
+  const m4 = new THREE.Matrix4(); let n = 0;
+  for (let i=0;i<W*W;i++) if (canLay(i)){ const p = wpos(i); m4.makeTranslation(p.x, 0.03, p.z); layMesh.setMatrixAt(n++, m4); }
+  layMesh.count = n; layMesh.instanceMatrix.needsUpdate = true;
+  layMat.opacity = 0.38 + Math.sin(elapsed*5)*0.2;
+}
+function planRiver(want = RIVER.step){
   const river = riverCells(); if (!river.length) return null;
   const inRiver = new Set(river), lv = S.upg.pump || 0, jig = j => hash(j + lv*151, S.seed);
   const open = j => ['grass','sapling','tree','rock'].includes(S.cells[j].t);          // 建物・島の外・今ある川は通れない
@@ -1982,7 +2048,7 @@ function planRiver(){
     for (const t of R.cells){
       if (!atEdge(t)) continue;
       const p = pathTo(R, t), away = Math.min(...river.map(j => cheb(j, t)));
-      const v = Math.abs(p.length - RIVER.step) + p.filter(j => S.cells[j].crop).length*1.5 - Math.min(away, 5)*0.6 + jig(t)*0.5 + (R.cost.get(t) - p.length)*0.25;
+      const v = Math.abs(p.length - want) + p.filter(j => S.cells[j].crop).length*1.5 - Math.min(away, 5)*0.6 + jig(t)*0.5 + (R.cost.get(t) - p.length)*0.25;
       if (v < bv){ bv = v; best = p; }
     }
     return best;
@@ -1999,7 +2065,7 @@ function planRiver(){
     if (!path && R.cells.length) path = pathTo(R, R.cells.reduce((a,b) => R.len.get(b) > R.len.get(a) ? b : a));
   }
   if (!path || !path.length) return null;
-  const cells = path.slice(0, RIVER.step), last = cells[cells.length-1];
+  const cells = path.slice(0, want), last = cells[cells.length-1];
   return {cells, fall:atEdge(last)};
 }
 function growRiver(plan){
@@ -2010,24 +2076,17 @@ function growRiver(plan){
     S.cells[i] = {t:'water', r:Math.random(), river:1};
   }
   const last = plan.cells[plan.cells.length-1];
-  if (plan.fall) S.cells[last].fall = 1;
   S.riverTip = last; S.stats.dug = (S.stats.dug || 0) + plan.cells.length;
-  refreshWater();
+  refreshWater(); calcTraffic();
   for (const i of plan.cells){ const p = wpos(i); burst(p.x, 0.2, p.z, 'leaf', 3, 0x6ac0f0); if (CM[i]) CM[i].userData.pop = 0.35; }
-  const p = wpos(last);
-  popAt(p.x, 0.9, p.z, plan.fall ? L('滝になった！','A waterfall!') : L('川が '+plan.cells.length+'マス伸びた','River +'+plan.cells.length), 'g');
-  toast(plan.fall ? L('川が島の端に届いて滝になった。次のLvでは途中から枝分かれする','The river reached the edge and became a waterfall. The next level branches off') : L('川が '+plan.cells.length+'マス伸びた','The river grew '+plan.cells.length+' tiles'), 'good');
 }
-// 手で掘っていたころのセーブ：今ある手掘りの流れはそのまま川に。買ってあった水車のぶんは伸ばす
+// 前の仕様のセーブ：今ある川はそのまま。水車のLvに足りない分だけ、敷ける川として渡す
 function migrateRiver(){
-  if (S.riverV >= 2) return;
-  const all = riverCells(), grown = !!S.riverV;
-  for (const i of all) if (!S.cells[i].spring) S.cells[i].river = 1;          // つながっている流れは川：埋められない（下流が切れるため）
-  S.riverV = 2;
-  if (grown) return;
-  S.riverTip = all[all.length-1];
-  const lv = S.upg.pump || 0;
-  for (let k=0; k<lv && riverCells().length - 1 < 2 + RIVER.step*lv; k++){ const p = planRiver(); if (!p) break; growRiver(p); }
+  if (S.riverV >= 3) return;
+  calcFlow();
+  if (!S.riverV) S.riverTip = waterAll[waterAll.length-1];
+  S.riverLeft = Math.max(0, RIVER.start + RIVER.step*(S.upg.pump || 0) - (waterAll.length - 1));
+  S.riverV = 3;
 }
 const isWet = i => neigh4(i).some(j => waterLive.has(j));
 const hasMate = (i, crop) => neigh4(i).some(j => S.cells[j].crop && S.cells[j].crop !== crop);
@@ -2051,7 +2110,7 @@ function toolWhy(tool, i){
   if (c.t === 'b' || c.t === 'occ') return L('建物がある','A building is here');
   if (c.spring) return L('湧き水は動かせない','The spring cannot be changed');
   if (tool === 'clear'){
-    if (c.t === 'water' && c.river) return L('川は動かせない','The river cannot be moved');
+    if (c.t === 'water' && waterAll.includes(i)) return L('川は「川を敷く」ではがせる','Lift river tiles with “Lay river”');
     return c.crop || c.t === 'water' || c.t === 'tree' ? '' : L('戻すものがない','Nothing to clear');
   }
   if (c.t === 'water') return L('川には植えられない','Cannot plant in the river');
@@ -2158,24 +2217,35 @@ function updateFarm(dt){
 function farmLine(){
   const se = season(), left = SEASON_DAYS - (S.day-1) % SEASON_DAYS, n = Math.max(0, waterAll.length - 1), dry = dryCount(n);
   return '<b style="color:var(--hi);font-weight:normal">'+N(SEASONS[se])+'</b>'+L('（あと'+left+'日）',' ('+left+'d left)')+'・'+L('田畑 ','Fields ')+fieldCount()+'<br>'+
-    L('水車 Lv','Waterwheel Lv')+(S.upg.pump || 0)+'/5・<span class="g">'+L('川 ','River ')+n+L('マス','')+'</span>'+(dry ? ' <span class="r">'+L('先の'+dry+'マスが干上がり中',dry+' dried up')+'</span>' : '');
+    L('水車 Lv','Waterwheel Lv')+(S.upg.pump || 0)+'/'+pumpMax()+(S.riverLeft ? '・<span style="color:var(--hi)">'+L('敷ける川 ','To lay ')+S.riverLeft+'</span>' : '')+'・<span class="g">'+L('川 ','River ')+n+L('マス','')+'</span>'+(dry ? ' <span class="r">'+L('先の'+dry+'マスが干上がり中',dry+' dried up')+'</span>' : '');
 }
 function wheelHTML(){
-  const u = UPGS.find(u => u.id === 'pump'), lv = S.upg.pump || 0, c = u.cost[lv], max = c === undefined;
-  let info = L('川はこれ以上なく伸びきった','The river has grown to its fullest'), ok = false;
-  if (!max){
-    const p = planRiver(); ok = !!p && S.gold >= c;
-    info = p ? (p.fall ? L('上げると川が '+p.cells.length+'マス伸びて、島の端で滝になる','Upgrading adds '+p.cells.length+' tiles, ending in a waterfall') : L('上げると川が '+p.cells.length+'マス伸びる','Upgrading adds '+p.cells.length+' tiles'))
-      : '<span class="r">'+L('流せる場所がない（建物を動かすか、島を広げる）','No room to flow (move a building or expand the island)')+'</span>';
-  }
-  return '<button class="opt hot wheel" data-act="upg:pump" '+(ok ? '' : 'disabled')+'><div class="n">'+L('川を伸ばす：揚水水車 Lv','Extend the river: Waterwheel Lv')+lv+(max ? ' MAX' : ' → '+(lv+1))+'</div>'+(max ? '' : '<div class="c">'+fmt(c)+'G</div>')+'<div class="d">'+info+'</div></button>';
+  const u = UPGS.find(u => u.id === 'pump'), lv = S.upg.pump || 0, cap = upgMax(u), c = upgCost(u, lv), max = c === undefined, left = S.riverLeft || 0;
+  return '<button class="opt '+(left ? 'hot' : '')+'" data-act="river"><div class="n">'+L('川を敷く','Lay river')+(left ? L('（あと'+left+'マス）',' ('+left+' left)') : L('（敷き直す）',' (rearrange)'))+'</div><div class="d">'+L('光るマスをタップで敷く。川をタップではがす','Tap a glowing tile to lay. Tap the river to lift')+'</div></button>' +
+    '<button class="opt '+(left ? '' : 'hot')+'" data-act="upg:pump" '+(!max && S.gold >= c ? '' : 'disabled')+'><div class="n">'+L('揚水水車','Waterwheel')+' Lv'+lv+'/'+cap+(max ? '' : ' → '+(lv+1))+'</div>'+(max ? '' : '<div class="c">'+fmt(c)+'G</div>')+
+    '<div class="d">'+(max ? (cap < u.cost.length ? L('島を広げると上限+1（新エリア）','Expand the island to raise the limit (New Areas)') : L('最大まで上げた','Fully upgraded')) : L('川が'+RIVER.step+'マス増える','+'+RIVER.step+' river tiles'))+'</div></button>';
 }
 function renderRiver(i){
-  const c = S.cells[i];
+  const c = S.cells[i], stray = !c.spring && !waterAll.includes(i);
   setHTML(bpanelEl, '<div class="ph"><span>'+(c.spring ? L('湧き水と揚水水車','Spring & waterwheel') : L('川','River'))+'</span><button class="btn x" data-act="unselect">×</button></div>' +
     '<div class="kv">'+farmLine()+'<br>'+(waterLive.has(i) ? '<span class="g">'+L('流れている。となりのマスは稲向き','Flowing. Tiles beside it suit rice')+'</span>' : '<span class="r">'+L('干上がっている','Dried up')+'</span>')+
-    '<br>'+L('夏は先の1/4が干上がる','In summer the far quarter dries up')+'</div><div class="seeds">'+wheelHTML()+'</div>' +
-    (!c.spring && !c.river ? '<div class="btns"><button class="btn" data-act="clearPlot">'+L('埋め戻す','Fill in')+'</button></div>' : ''), 'b');
+    '<br>'+L('島の端で終わると滝。夏は先の1/4が干上がる','A river ending at the edge falls. In summer the far quarter dries up')+'</div><div class="seeds">'+wheelHTML()+'</div>' +
+    (stray ? '<div class="btns"><button class="btn" data-act="clearPlot">'+L('埋め戻す','Fill in')+'</button></div>' : ''), 'b');
+}
+function riverBar(){
+  const n = S.riverLeft || 0;
+  $('#confirm').style.display = 'flex';
+  $('#confirmTxt').textContent = L('川 あと'+n+'マス', n+' tiles left');
+  const a = $('#confirmAuto'); a.hidden = !n; a.textContent = L('おまかせ','Auto');
+  $('#confirm [data-act="confirmNo"]').textContent = L('完了','Done');
+}
+function riverInfo(i){
+  const why = riverWhy(i), c = S.cells[i];
+  let t;
+  if (why) t = '<span class="r">× '+why+'</span>';
+  else if (c.t === 'water') t = L('はがして手元に戻す','Lift it back into your hand');
+  else t = '<span class="g">'+(atEdge(i) && neigh4(i).filter(j => S.cells[j].t === 'water').length <= 1 ? L('ここに敷くと滝になる','Lay here for a waterfall') : L('ここに敷く','Lay here'))+'</span>'+(c.crop ? '<br><span class="r">'+L('畑はなくなる（種代は戻る）','The field is lost (seed cost refunded)')+'</span>' : '');
+  return '<b>'+L('川を敷く','Lay river')+'</b>　'+L('あと','')+(S.riverLeft || 0)+L('マス',' left')+'<div class="kv">'+t+'</div>';
 }
 function toolInfo(i){
   const tool = mode.tool, why = toolWhy(tool, i), Lst = why ? ['<span class="r">× '+why+'</span>'] : [];
@@ -2232,7 +2302,7 @@ function makeWater(i, c){
     g.add(part(G.box, lit, dx ? 0.3 : 0.44,0.03,dz ? 0.3 : 0.44, dx*0.36,0.029,dz*0.36));
     if (on && (dx + dz) > 0) g.add(part(G.box, 0xbfe8ff, dx ? 0.18 : 0.04,0.01,dz ? 0.18 : 0.04, dx*0.3,0.05,dz*0.3));
   }
-  if (c.fall && atEdge(i)){          // 滝：流れてきた向きの先へ落ちる
+  if (isFall(i)){          // 滝：流れてきた向きの先へ落ちる
     const off = [[1,0],[-1,0],[0,1],[0,-1]].filter(([dx,dz]) => { const x = cx(i)+dx, z = cz(i)+dz; return x<0 || z<0 || x>=W || z>=W || S.cells[z*W+x].t === 'void'; });
     const from = nw[0], [dx, dz] = off.find(([dx,dz]) => from !== undefined && cx(from) === cx(i)-dx && cz(from) === cz(i)-dz) || off[0];
     g.add(part(G.box, bank, dx ? 0.34 : 0.6,0.028,dz ? 0.34 : 0.6, dx*0.37,0.014,dz*0.37));
@@ -2250,7 +2320,7 @@ function makeWater(i, c){
   if (c.spring){
     for (let k=0;k<8;k++){ const a = k/8*Math.PI*2; g.add(part(G.dod, 0x9a9aa4, 0.14,0.12,0.14, Math.cos(a)*0.36,0.06,Math.sin(a)*0.36)); }
     g.add(part(G.cone6, 0x9adcff, 0.12,0.4,0.12, 0,0.22,0)); g.add(part(G.ico1, 0xe8f8ff, 0.1,0.08,0.1, 0,0.43,0));
-    const lv = S.upg.pump || 0;
+    const lv = Math.min(5, S.upg.pump || 0);
     if (lv){          // 揚水水車：Lvが上がるほど大きく
       const r = 0.22 + lv*0.06, wh = new THREE.Group(), hub = r + 0.03, WOOD = lv >= 5 ? 0xe8b840 : 0x8a5a2e;
       wh.position.set(-0.42, hub, -0.08);
@@ -2494,7 +2564,7 @@ function onBalloonDock(){
   if (earn){ popAt(wpos(WH).x, 1.6, wpos(WH).z + 1, '+'+fmt(earn)+'G', 'g'); coinBurst(6); sfx('coin'); }
 }
 function plannedCells(){
-  if (!mode || mode.kind === 'bell' || mode.kind === 'tool') return [];
+  if (!mode || mode.kind === 'bell' || mode.kind === 'tool' || mode.kind === 'river') return [];
   const at = TOUCH ? pending : hoverCell; if (at < 0) return [];
   const sz = mode.kind === 'build' ? BUILD[mode.type].size || 1 : bSize(mode.from);
   return cx(at) + sz <= W && cz(at) + sz <= W ? footCells(at, sz) : [];
@@ -3333,12 +3403,13 @@ function pick(){
   }
   return -1;
 }
-const modeSize = () => mode.kind === 'bell' || mode.kind === 'tool' ? 1 : mode.kind === 'build' ? BUILD[mode.type].size || 1 : bSize(mode.from);
-function modeWhy(i){ if (mode.kind === 'bell') return ''; if (mode.kind === 'tool') return toolWhy(mode.tool, i); return mode.kind === 'build' ? canPlace(mode.type, i) : moveWhy(mode.from, i); }
+const modeSize = () => mode.kind === 'bell' || mode.kind === 'tool' || mode.kind === 'river' ? 1 : mode.kind === 'build' ? BUILD[mode.type].size || 1 : bSize(mode.from);
+function modeWhy(i){ if (mode.kind === 'bell') return ''; if (mode.kind === 'river') return riverWhy(i); if (mode.kind === 'tool') return toolWhy(mode.tool, i); return mode.kind === 'build' ? canPlace(mode.type, i) : moveWhy(mode.from, i); }
 function doMode(i){
   const why = modeWhy(i); if (why){ toast(why, 'bad'); sfx('ui'); return; }
   if (mode.kind === 'bell'){ setBell(i); cancelMode(); return; }
-  if (mode.kind === 'tool'){ useTool(mode.tool, i); return; }          // 続けて何マスでも置ける
+  if (mode.kind === 'tool'){ useTool(mode.tool, i); return; }
+  if (mode.kind === 'river'){ useRiver(i); riverBar(); return; }          // 続けて何マスでも置ける
   if (mode.kind === 'build'){ const t = mode.type; place(t, i); if (!keys.Shift) cancelMode(); select(i); }
   else { moveBuilding(mode.from, i); cancelMode(); }
 }
@@ -3346,7 +3417,7 @@ function onClickCell(i, touch){
   if (VISIT) return;
   if (mode){
     if (i < 0) return;
-    if (touch && mode.kind === 'tool'){ pending = -1; doMode(i); return; }          // 田畑と川は確認なしで次々に
+    if (touch && (mode.kind === 'tool' || mode.kind === 'river')){ pending = -1; doMode(i); return; }          // 田畑と川は確認なしで次々に
     if (touch){ pending = i; showConfirm(); return; }   // スマホは「置く場所を選ぶ → ✓で決定」の2段階
     doMode(i); return;
   }
@@ -3357,9 +3428,17 @@ function showConfirm(){
   const el = $('#confirm'); el.style.display = 'flex';
   $('#confirmTxt').textContent = mode.kind === 'bell' ? L('ここへ群れを導く？','Lead the herd here?') : mode.kind === 'build' ? L('ここに建てる？','Build here?') : L('ここへ移動？','Move here?');
 }
-function cancelMode(){ document.body.classList.remove('placing', 'tooling'); mode = null; pending = -1; if (ghost){ scene.remove(ghost); ghost = null; } $('#tip').style.display = 'none'; $('#confirm').style.display = 'none'; }
+function cancelMode(){ document.body.classList.remove('placing', 'tooling'); $('#confirmAuto').hidden = true; $('#confirm [data-act="confirmNo"]').textContent = '✕'; mode = null; pending = -1; if (ghost){ scene.remove(ghost); ghost = null; } $('#tip').style.display = 'none'; $('#confirm').style.display = 'none'; }
 function startMode(m){
   cancelMode(); closePanel(); mode = m; document.body.classList.add('placing');
+  if (m.kind === 'river'){
+    select(-1); document.body.classList.add('tooling');
+    ghost = new THREE.Group(); ghost.add(part(G.box, 0, 0.5,0.06,0.5, 0,0.03,0));
+    ghost.traverse(o=>{ if (o.isMesh){ o.material = ghostOk; o.castShadow = false; }});
+    ghost.visible = false; scene.add(ghost);
+    riverBar();
+    return;
+  }
   if (m.kind === 'tool'){
     select(-1); document.body.classList.add('tooling');
     ghost = new THREE.Group(); ghost.add(part(G.box, 0, 0.5,0.06,0.5, 0,0.03,0));
@@ -3397,6 +3476,7 @@ function bellInfo(i){
 function placementInfo(i){
   if (mode.kind === 'bell') return bellInfo(i);
   if (mode.kind === 'tool') return toolInfo(i);
+  if (mode.kind === 'river') return riverInfo(i);
   const type = mode.kind === 'build' ? mode.type : S.cells[mode.from].b.type, d = BUILD[type], Lst = [];
   const why = modeWhy(i); if (why) Lst.push('<span class="r">× '+why+'</span>');
   const planned = footCells(i, mode.kind === 'build' ? d.size || 1 : bSize(mode.from)).filter(j => j < W*W).map(j => S.cells[j].t);
@@ -3496,9 +3576,9 @@ function renderPanel(){
       }).join('') + '</div>' + (buildTab === 'life' && !S.airport ? '<div class="kv" style="color:var(--sub);margin-top:6px">'+L('？？？：空港が開くと、もっと大きな楽しみが…','??? When the airport opens, something big awaits…')+'</div>' : '');
   } else if (panelName === 'upg'){
     h = head(L('改良','Improve')) + '<div class="grid">' + UPGS.filter(islOk).map(u=>{
-      const lv = S.upg[u.id] || 0, c = u.cost[lv], max = c === undefined, T = u.tiers && u.tiers[Math.min(lv, u.tiers.length-1)];
+      const lv = S.upg[u.id] || 0, c = upgCost(u, lv), max = c === undefined, T = u.tiers && u.tiers[Math.min(lv, u.tiers.length-1)];
       const chain = u.tiers ? '<div class="d">'+u.tiers.map(([n], k) => k < lv ? '<span class="g">'+N(n)+'</span>' : N(n)).join(' → ')+'</div>' : '';
-      return '<button class="opt" data-act="upg:'+u.id+'" '+(max || S.gold < c ? 'disabled' : '')+'><div class="n">'+(T ? N(T[0]) : N(u.n)+(u.cost.length>1?' Lv'+lv+'/'+u.cost.length:''))+'</div><div class="c">'+(max?L('取得済み','Owned'):fmt(c)+'G')+'</div><div class="d">'+N(T ? T[1] : u.d)+'</div>'+chain+'</button>';
+      return '<button class="opt" data-act="upg:'+u.id+'" '+(max || S.gold < c ? 'disabled' : '')+'><div class="n">'+(T ? N(T[0]) : N(u.n)+(u.cost.length>1?' Lv'+lv+'/'+upgMax(u):''))+'</div><div class="c">'+(max?(u.id === 'pump' && lv < u.cost.length ? L('島を広げると+1','Expand to raise') : L('取得済み','Owned')):fmt(c)+'G')+'</div><div class="d">'+N(T ? T[1] : u.d)+'</div>'+chain+'</button>';
     }).join('') + '</div>' + driveHTML();
   } else if (panelName === 'market'){
     const wh = S.cells[WH].b, lc = lvlCost(wh);
@@ -3527,7 +3607,7 @@ function renderPanel(){
       (S.airLvl < AIR_COST.length ? '<div class="btns"><button class="btn hot" data-act="airup" '+(S.gold >= AIR_COST[S.airLvl] ? '' : 'disabled')+'>'+L('改装する','Refit')+' '+fmt(AIR_COST[S.airLvl])+'G</button></div>' : '<div class="kv g">'+L('これ以上ない豪華な飛行船だ！','The grandest airship in the skies!')+'</div>')
       : '<p>'+L('空港を開いて飛行船を呼ぶと、島の歩みに応じた<b>称号</b>が決まる。','Open an airport and call an airship to earn your island’s <b>title</b>.')+'</p><div class="kv">'+L('費用','Cost')+'：<b style="color:var(--hi)">'+fmt(P.goal)+'G</b>（'+L('いま','now')+' '+fmt(S.gold)+'G）<br>'+L('今の雰囲気','Current mood')+'：『'+N(r.main[0])+'』</div>' +
         '<div class="btns"><button class="btn hot" data-act="airport" '+(S.gold >= P.goal ? '' : 'disabled')+'>'+L('空港を開く','Open airport')+'（'+fmt(P.goal)+'G）</button></div>') +
-      '<h4 style="color:var(--hi);font-weight:normal;margin:10px 0 4px">'+L('島を広げる','Expand the island')+'</h4><div class="kv">'+L('1列ぶん陸地が増える。費用 ','Adds one row of land. Cost ')+fmt(expandCost())+'G</div><div class="btns">'+xb+'</div>' +
+      '<h4 style="color:var(--hi);font-weight:normal;margin:10px 0 4px">'+L('島を広げる','Expand the island')+'</h4><div class="kv">'+(isFarm ? L('1列ぶん陸地が増え、水車の上限+1。費用 ','Adds one row of land and +1 waterwheel level. Cost ') : L('1列ぶん陸地が増える。費用 ','Adds one row of land. Cost '))+fmt(expandCost())+'G</div><div class="btns">'+xb+'</div>' +
       '<h4 style="color:var(--hi);font-weight:normal;margin:10px 0 4px">'+L('となりの島','Neighboring islands')+'</h4>' + neighborHTML();
   } else if (panelName === 'settings'){
     const row = (label, html) => '<div class="row"><span class="grow">'+label+'</span><div class="seg">'+html+'</div></div>';
@@ -3629,13 +3709,11 @@ document.addEventListener('pointerup', e => {
 });
 function buyUpg(id){
   const u = UPGS.find(u => u.id === id); if (!u || !islOk(u)) return false;
-  const lv = S.upg[id] || 0, c = u.cost[lv];
+  const lv = S.upg[id] || 0, c = upgCost(u, lv);
   if (c === undefined || S.gold < c) return false;
-  const plan = id === 'pump' ? planRiver() : null;
-  if (id === 'pump' && !plan){ toast(L('流せる場所がない（建物を動かすか、島を広げる）','No room to flow (move a building or expand the island)'), 'bad'); return false; }
   S.gold -= c; S.upg[id] = lv + 1;
-  if (!plan) toast(N(u.tiers ? u.tiers[lv][0] : u.n)+(u.cost.length > 1 && !u.tiers ? ' Lv'+(lv+1) : '')+L(' を手に入れた！',' acquired!'), 'good');
-  if (plan) growRiver(plan);
+  if (id === 'pump'){ S.riverLeft = (S.riverLeft || 0) + RIVER.step; toast(L('揚水水車 Lv'+(lv+1)+'：川を'+RIVER.step+'マス敷ける','Waterwheel Lv'+(lv+1)+': lay '+RIVER.step+' river tiles'), 'good'); }
+  else toast(N(u.tiers ? u.tiers[lv][0] : u.n)+(u.cost.length > 1 && !u.tiers ? ' Lv'+(lv+1) : '')+L(' を手に入れた！',' acquired!'), 'good');
   sfx('fanfare');
   if (id === 'road') updatePaths();
   return true;
@@ -3654,7 +3732,9 @@ function doAct(actStr, el){
     case 'closePanel': closePanel(); break;
     case 'tab': buildTab = arg; break;
     case 'build': startMode({kind:'build', type:arg}); break;
-    case 'upg': buyUpg(arg); break;
+    case 'upg': if (buyUpg(arg) && arg === 'pump') startMode({kind:'river'}); break;          // 買ったらそのまま敷く
+    case 'river': if (isFarm) startMode({kind:'river'}); break;
+    case 'riverAuto': if (mode?.kind === 'river'){ autoRiver(); riverBar(); } break;
     case 'sell1': sell(arg, 1); break;
     case 'sellAll': case 'sellchip': sell(arg, S.items[arg]); break;
     case 'auto': S.auto[arg] = !S.auto[arg]; break;
@@ -3760,9 +3840,11 @@ function renderTop(){
     if (S.tut === 6 && countB('sawmill') && workerCount() >= housing()) msg = L('住む家が満員で雇えない！<b>住宅</b>を建てるか、木こり小屋の住民を<b>減らそう</b>。','No room to hire! Build a <b>House</b> or <b>remove</b> a worker from the camp.');
     tutEl.hidden = false; tutEl.querySelector('.msg').innerHTML = '<small style="color:var(--sub)">'+(S.tut+1)+'/'+TUT.length+'</small><br>'+msg;
     const T = TUT[S.tut]; if (T.el){ const e = $(T.el); if (e) e.classList.add('pulse'); }
-  } else if (isFarm && !S.farmHintOff && S.stats.planted && !S.upg.pump){
+  } else if (isFarm && !S.farmHintOff && S.stats.planted && (S.riverLeft || !S.upg.pump)){
     tutEl.hidden = false;
-    tutEl.querySelector('.msg').innerHTML = L('<b>川を伸ばす</b>には、<b>湧き水か川をタップ</b>して揚水水車を上げよう（Lv5まで）。','To <b>extend the river</b>, <b>tap the spring or river</b> and upgrade the waterwheel (up to Lv5).');
+    tutEl.querySelector('.msg').innerHTML = S.riverLeft
+      ? L('<b>川があと'+S.riverLeft+'マス</b>敷ける。<b>湧き水か川をタップ →「川を敷く」</b>で好きな所へ。','You have <b>'+S.riverLeft+' river tiles</b> to lay. <b>Tap the spring or river → Lay river</b>.')
+      : L('<b>川を伸ばす</b>には、<b>湧き水か川をタップ</b>して揚水水車を上げよう。1Lvで3マス、好きな所に敷ける。','To <b>extend the river</b>, <b>tap the spring or river</b> and upgrade the waterwheel: 3 tiles per level, laid where you like.');
   } else if (isFarm && !S.farmHintOff && !S.stats.planted){
     tutEl.hidden = false;
     if (season() !== 3) $('#btnBuild').classList.add('pulse');
@@ -3841,7 +3923,8 @@ function expandIsland(dir){
     S.cells[i] = isFarm ? {t:'grass', r:Math.random()} : r < 0.35 ? {t:'tree', hp:P.treeHP, r:Math.random()} : r < 0.43 ? {t:'rock', hp:P.rockHP, r:Math.random()} : {t:'grass', r:Math.random()};
     setCellMesh(i); if (CM[i]) CM[i].userData.pop = 0.4;
   }
-  updateTiles(); if (isFarm) refreshWater(); if (S.airport) buildAirship(true); sfx('build'); shake(0.12);
+  updateTiles();
+  if (isFarm){ refreshWater(); calcTraffic(); toast(L('水車の上限が Lv'+pumpMax()+' に。川を新しい端まで伸ばせる','Waterwheel limit is now Lv'+pumpMax()+'. Take the river to the new edge'), 'good'); } if (S.airport) buildAirship(true); sfx('build'); shake(0.12);
   story('島を広げた','Expanded the island'); toast(L('島が広がった！','The island grew!'),'good');
 }
 
@@ -4104,8 +4187,8 @@ function showArrival(){
 }
 function farmGuide(){
   return '<p class="kv">'+L(
-    '<b>この島は水と四季で育てる</b><br>・<b>空いている地面をタップ</b>して種をまく（建設の「田畑」からでも）<br>・<b>稲は川のとなり</b>、<b>小麦は乾いた土</b>、<b>かぼちゃは違う作物のとなり</b>が好き<br>・<b>湧き水か川をタップ</b>して揚水水車を上げると、<b>川が自分で伸びる</b>（Lv5まで）。夏は先の方が干上がる<br>・<b>道になっている所の畑は踏まれて育ちが悪い</b>（種まき中は赤く見える）<br>・季節は2日ずつ。<b>冬は何も育たない</b>ので、秋に貯めて加工でしのぐ<br>・実った畑はタップか<b>農家</b>で刈り取る。目標は <b>'+fmt(P.goal)+'G</b>',
-    '<b>This island runs on water and seasons</b><br>• <b>Tap open ground</b> to plant (or use Build → Fields)<br>• <b>Rice likes the river</b>, <b>wheat likes dry soil</b>, <b>pumpkins like a different crop next door</b><br>• <b>Tap the spring or river</b> to upgrade the waterwheel and <b>the river grows by itself</b> (up to Lv5). Its far end dries up in summer<br>• <b>Crops on busy paths grow poorly</b> (shown red while planting)<br>• Seasons last 2 days. <b>Nothing grows in winter</b>, so stock up in autumn and craft<br>• Tap ripe fields, or staff a <b>Farmhouse</b>. Goal: <b>'+fmt(P.goal)+'G</b>')+'</p>';
+    '<b>この島は水と四季で育てる</b><br>・<b>空いている地面をタップ</b>して種をまく（建設の「田畑」からでも）<br>・<b>稲は川のとなり</b>、<b>小麦は乾いた土</b>、<b>かぼちゃは違う作物のとなり</b>が好き<br>・<b>湧き水か川をタップ</b>して揚水水車を上げると、<b>川を3マス好きな所に敷ける</b>（島を広げると上限+1）。夏は先の方が干上がる<br>・<b>道になっている所の畑は踏まれて育ちが悪い</b>（種まき中は赤く見える）<br>・季節は2日ずつ。<b>冬は何も育たない</b>ので、秋に貯めて加工でしのぐ<br>・実った畑はタップか<b>農家</b>で刈り取る。目標は <b>'+fmt(P.goal)+'G</b>',
+    '<b>This island runs on water and seasons</b><br>• <b>Tap open ground</b> to plant (or use Build → Fields)<br>• <b>Rice likes the river</b>, <b>wheat likes dry soil</b>, <b>pumpkins like a different crop next door</b><br>• <b>Tap the spring or river</b> to upgrade the waterwheel: <b>3 river tiles per level, laid where you like</b> (expansions raise the limit). The far end dries up in summer<br>• <b>Crops on busy paths grow poorly</b> (shown red while planting)<br>• Seasons last 2 days. <b>Nothing grows in winter</b>, so stock up in autumn and craft<br>• Tap ripe fields, or staff a <b>Farmhouse</b>. Goal: <b>'+fmt(P.goal)+'G</b>')+'</p>';
 }
 function dairyGuide(){
   return '<p class="kv">'+L(
@@ -4242,7 +4325,7 @@ function frame(now){
   } else if (bonfire.visible){ bonfire.visible = false; festLight.intensity = 0; }
   plotMark.visible = isFarm && selCell >= 0 && S.cells[selCell].t !== 'b';
   if (plotMark.visible){ const pp = wpos(selCell); plotMark.position.set(pp.x, 0, pp.z); }
-  updateFarm(dt); updateBell(dt); updateRaze(dt); updateDrive(); updateStrollers(wdt ? dt*Math.min(4, S.speed) : 0);
+  updateFarm(dt); if (isFarm) paintLay(); updateBell(dt); updateRaze(dt); updateDrive(); updateStrollers(wdt ? dt*Math.min(4, S.speed) : 0);
   updateFx(wdt ? dt : 0); updatePops(dt); updateAirship(dt, elapsed); updateCritters(wdt ? dt : 0); updateBadges(); updateAlerts(); updateTourists(wdt ? dt*Math.min(4, S.speed) : 0);
   // マーカー・ホバー・置き場所プレビュー
   const mt = markerTarget();
@@ -4281,7 +4364,7 @@ const myName = () => cleanName(S.name) || N(islName(ISLAND));
 function visitURL(){
   const U = S.upg, b = [SH_VER, SH_ISL.indexOf(ISLAND), S.day >> 8 & 255, S.day & 255,
     Math.min(3, U.carry || 0) | Math.min(3, U.road || 0) << 2 | (S.drive || 0) << 4 | Math.min(3, S.airLvl || 0) << 6,
-    (S.airport ? 1 : 0) | (S.flags.skycow ? 2 : 0) | (S.flags.jersey ? 4 : 0) | (U.dog ? 8 : 0) | Math.min(5, U.pump || 0) << 4,
+    (S.airport ? 1 : 0) | (S.flags.skycow ? 2 : 0) | (S.flags.jersey ? 4 : 0) | (U.dog ? 8 : 0) | Math.min(9, U.pump || 0) << 4,
     S.land.x0, S.land.x1, S.land.z0, S.land.z1, Math.min(24, S.herd?.length || 0), S.bell ?? WH];
   const nm = new TextEncoder().encode(cleanName(S.name)); b.push(nm.length, ...nm);
   S.cells.forEach((c, i) => {
@@ -4299,7 +4382,7 @@ function visitState(){
   const V = VISIT, s = newState(ISLAND);
   s.name = cleanName(V.name); s.day = s.airFirst = V.day; s.time = P.dayLen*P.dayFrac*0.4; s.tut = -1; s.seed = V.cells.reduce((a,c,i) => (a*31 + c.c + i) % 1000, 7) + 0.5;
   s.upg.carry = V.upg & 3; s.upg.road = Math.min(2, V.upg >> 2 & 3); s.drive = Math.min(2, V.upg >> 4 & 3); s.driveV = 2; s.airLvl = V.upg >> 6;
-  s.airport = !!(V.mode & 1); s.flags.skycow = !!(V.mode & 2); s.flags.jersey = !!(V.mode & 4); if (V.mode & 8) s.upg.dog = 1; s.upg.pump = Math.min(5, V.mode >> 4 & 7);
+  s.airport = !!(V.mode & 1); s.flags.skycow = !!(V.mode & 2); s.flags.jersey = !!(V.mode & 4); if (V.mode & 8) s.upg.dog = 1; s.upg.pump = Math.min(9, V.mode >> 4 & 15);
   const [x0,x1,z0,z1] = V.land; s.land = {x0,x1,z0,z1};
   s.cells = V.cells.map((c, i) => {
     const r = hash(i, 5);
@@ -4337,7 +4420,7 @@ function visitState(){
 }
 // いまの角度のまま、島全体が収まる構図で撮る
 function snapIsland(w, h){
-  const keep = {...camS}, off = [hover, marker, ringG, ...alertMarks].map(o => [o, o.visible]);
+  const keep = {...camS}, off = [hover, marker, ringG, plotMark, layMesh, warnMesh, ...alertMarks].map(o => [o, o.visible]);
   for (const [o] of off) o.visible = false;
   if (ghost) ghost.visible = false;
   VIEW.w = w; VIEW.h = h;
@@ -4374,13 +4457,13 @@ function calcScore(isl){
   const built = new Set(bs.filter(b => b.type !== 'warehouse').map(b => b.type)).size, ppl = bs.reduce((a,b) => a + (b.workers || 0), 0);
   const craft = isl === 'sky' ? 75*f(count(c => c.t === 'tree' || c.t === 'sapling')/24) + 75*f(st.planted/70)
     : isl === 'dairy' ? 100*f((st.clover || 0)/320) + 50*f((s.herd?.length || 0)/16)
-    : 75*f(count(c => c.t === 'water' && !c.spring)/24) + 75*f(count(c => !!c.crop)/52);
+    : 75*f(count(c => c.t === 'water' && !c.spring)/17) + 75*f(count(c => !!c.crop)/52);
   const parts = [
     {n:['開拓','Progress'], max:250, v:s.airport ? 250 : 150*f(st.earned/I.goal), tip:['空港を開く','Open the airport']},
     {n:['速さ','Speed'], max:250, v:s.airport ? 250*f(1 - (gd - par)/(par*1.5)) : 0, tip:['空港を早く開く（Day '+par+'で満点）','Open the airport early (full marks by day '+par+')']},
     {n:['幸福','Happiness'], max:200, v:200*f((avg - 15)/65)*f((s.day - 1)/6), tip:['平均幸福を80に近づける','Raise average happiness toward 80']},
     {n:['にぎわい','Bustle'], max:150, v:90*f(built/(kinds.length*0.7)) + 60*f(ppl/24), tip:['いろいろな建物と住民を増やす','More kinds of buildings, more residents']},
-    {n:CRAFT_NAME[isl], max:150, v:craft, tip:{sky:['木を植え、森を残す','Plant trees and keep the forest'], dairy:['鐘を移してクローバーを増やし、牛を増やす','Move the bell for clover, grow the herd'], farm:['水車で川を伸ばし、田畑を増やす','Grow the river, add fields']}[isl]},
+    {n:CRAFT_NAME[isl], max:150, v:craft, tip:{sky:['木を植え、森を残す','Plant trees and keep the forest'], dairy:['鐘を移してクローバーを増やし、牛を増やす','Move the bell for clover, grow the herd'], farm:['水車を上げて川を敷き、田畑を増やす','Lay more river, add fields']}[isl]},
   ];
   for (const p of parts) p.v = Math.round(p.v);
   const total = parts.reduce((a,p) => a + p.v, 0);
@@ -4581,7 +4664,7 @@ requestAnimationFrame(frame);
 
 // テスト・デバッグ用の窓口
 window.DTT = {get S(){return S;}, P, W, WH, place, hire, levelUp, sell, clickCell, collect, moveBuilding, chooseEvent, workers, allB, evaluate, treeCount, sim, onDawn, EVENTS, eventQueue, critters, expandIsland,
-  buyUpg, planRiver, riverCells, dryCount, get waterAll(){return waterAll;},
+  buyUpg, planRiver, useRiver, riverWhy, autoRiver, canLay, canPeel, isFall, pumpMax, riverCells, dryCount, get waterAll(){return waterAll;},
   skipTut:()=>{S.tut=-1;$('#tut').hidden=true;}, reset:resetGame,
   screenOf:(i)=>{const p=wpos(i); return toScreen(p.x,0,p.z);},
   bench:(n=30)=>{const px=new Uint8Array(4);const gl=renderer.getContext();const t0=performance.now();for(let k=0;k<n;k++){renderer.setRenderTarget(rt);renderer.render(scene,cam);renderer.setRenderTarget(null);renderer.render(postScene,postCam);gl.readPixels(0,0,1,1,gl.RGBA,gl.UNSIGNED_BYTE,px);}return (performance.now()-t0)/n;},
