@@ -127,6 +127,13 @@ button{font:inherit;color:inherit;cursor:pointer}
 .shareimg{display:block;width:100%;aspect-ratio:16/9;background:#0b0f26;margin-top:8px}
 #visit{position:absolute;left:8px;top:8px;max-width:calc(100% - 16px);padding:6px 10px;display:flex;gap:14px;align-items:center;line-height:1.4}
 #visit b{color:var(--hi);font-weight:normal}
+#credit{position:absolute;left:8px;bottom:8px;display:flex;align-items:center;gap:10px;padding:5px 10px;background:rgba(27,31,58,.8);pointer-events:auto}
+#credit[hidden]{display:none}
+#credit a{display:block;line-height:0}
+#credit .g{height:52px}
+#credit .s{height:34px}
+body.visiting #bpanel{top:auto;bottom:80px;left:auto;right:8px;width:min(340px,calc(100% - 16px));transform:none}
+@media (max-width:640px){#credit{gap:6px;padding:4px 6px}#credit .g{height:38px}#credit .s{height:24px}body.visiting #bpanel{bottom:62px}}
 body.visiting #top,body.visiting #side,body.visiting #bottom,body.visiting #missions{display:none!important}
 body.tooling #confirm [data-act="confirmYes"]{display:none}
 #toasts{position:absolute;left:8px;bottom:62px;display:flex;flex-direction:column;gap:4px;pointer-events:none;max-width:min(360px,calc(100vw - 32px))}
@@ -196,6 +203,10 @@ body.tooling #confirm [data-act="confirmYes"]{display:none}
     <button class="btn" data-act="panel:area" id="btnArea"></button>
   </div>
   <div id="visit" class="px" hidden></div>
+  <div id="credit" hidden>
+    <a href="https://sin1.studio/diorama/" target="_blank" rel="noopener"><img class="g" src="assets/logo_t.png" alt="ジオラマアイランド Diorama Island"></a>
+    <a href="https://sin1.studio/" target="_blank" rel="noopener"><img class="s" src="assets/sin1studio.png" alt="sin1's studio"></a>
+  </div>
   <div id="toasts"></div>
   <div id="tip" class="px"></div>
   <div id="modal" hidden><div class="mbox px scroll"></div></div>

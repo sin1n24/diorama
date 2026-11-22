@@ -1463,7 +1463,9 @@ const treeCount = () => S.cells.filter(c=>c.t==='tree').length;
 const workerCount = () => workers.length;
 const driveOf = () => DRIVE[S.drive || 0] || DRIVE[2];
 const lampNight = () => S.upg.road >= 2 && isNight() ? 1.3 : 1;
-const workF = () => driveOf().work * lampNight();
+const NIGHT_EFF = 0.5;          // 夜勤の効率：作業も移動も昼の半分
+const nightF = () => S.nightShift && isNight() ? NIGHT_EFF : 1;
+const workF = () => driveOf().work * lampNight() * nightF();
 const pop = () => workerCount() + (S.idle || 0);          // 働いている人＋手の空いた移住者
 const canHire = b => b.workers < slots(b) && (S.idle > 0 || (S.gold >= hireCost() && pop() < housing()));
 const hireTxt = () => L('雇う','Hire') + ' ' + (S.idle > 0 ? L('無料','free') : fmt(hireCost())+'G');
@@ -1528,7 +1530,7 @@ function moodBreakdown(){
   if (S.flags.steam) Lst.push([L('工場の煙','Factory smoke'), -8]);
   const np = noisePairs(); if (np) Lst.push([L('工場の騒音','Factory noise')+'('+np+')', -Math.min(20, 3*np)]);
   const hl = Math.max(0, pop() - housing()); if (hl) Lst.push([L('家なし','Homeless')+'('+hl+')', -6*hl]);
-  if (S.nightShift && isNight() && workerCount()) Lst.push([L('夜勤中','Night shift')+(countB('bath') ? L('（'+BUILD.bath.n[0]+'で半分）',' (halved by '+BUILD.bath.n[1]+')') : ''), countB('bath') ? -6 : -12]);
+  if (S.nightShift && isNight() && workerCount()) Lst.push([L('夜勤中・効率半分','Night shift, half efficiency')+(countB('bath') ? L('（'+BUILD.bath.n[0]+'で半分）',' (halved by '+BUILD.bath.n[1]+')') : ''), countB('bath') ? -6 : -12]);
   return Lst;
 }
 const moodTarget = () => clamp(moodBreakdown().reduce((a,[,v])=>a+v, 0), 0, 100);
@@ -1818,7 +1820,7 @@ function planHaul(w){
 function farPenalty(w){ const d = cheb(cellAt(w.x, w.z), w.bi); return d > P.farFrom ? 1 / (1 + P.farK * (d - P.farFrom) ** 2) : 1; }
 function walkSpeed(w, t){
   const paved = S.upg.road && t && t.key && S.routes[t.key] > 0.45;
-  return P.walk * moodF() * (1 + (driveOf().work - 1)*0.4) * lampNight() * (w.job === 'haul' ? HAUL_SPD[S.upg.carry] ?? 1 : 1) * (nearBonus(w.bi) ? 1.25 : 1) * (paved ? 1 + 0.25*S.upg.road : 1) * farPenalty(w);
+  return P.walk * moodF() * (1 + (driveOf().work - 1)*0.4) * lampNight() * nightF() * (w.job === 'haul' ? HAUL_SPD[S.upg.carry] ?? 1 : 1) * (nearBonus(w.bi) ? 1.25 : 1) * (paved ? 1 + 0.25*S.upg.road : 1) * farPenalty(w);
 }
 function updateWorker(w, dt){
   w.work = false; w.dance = 0;
@@ -3081,7 +3083,7 @@ const EVENTS = [
     ]};
   }},
   {id:'nightorder', w:1.5, cond:()=>!S.nightShift && !S.nightOrder && S.day >= 4 && allB().some(i=>BUILD[S.cells[i].b.type]?.in && S.cells[i].b.workers), make:()=>({img:'nightorder', title:L('夜明けの特急便','The dawn express'), text:L('商人が「明日の朝いちばんの気球に、夜のうちに作った品を積みたい。いつもの1.45倍で買うよ」と言っている。','A merchant says: "Load what you craft tonight on tomorrow’s first balloon. I’ll pay 1.45× the usual."'), opts:[
-    {l:L('今夜は夜勤！','Night shift tonight!'), d:L('今夜だけ夜勤ON。夜のあいだに作った加工品の値段の45%がボーナスで入る（品物は手元に残る）','Night shift ON just for tonight. Bonus: 45% of the value of goods crafted overnight (you keep the goods)'), f:()=>{
+    {l:L('今夜は夜勤！','Night shift tonight!'), d:L('今夜だけ夜勤ON（効率は昼の半分）。夜のあいだに作った加工品の値段の45%がボーナスで入る（品物は手元に残る）','Night shift ON just for tonight, at half efficiency. Bonus: 45% of the value of goods crafted overnight (you keep the goods)'), f:()=>{
       S.nightOrder = {day:S.day, prev:S.nightShift, snap:null}; S.nightShift = true; story('夜明けの特急便に挑んだ','Took on the dawn express');
       return {img:'nightorder', title:L('今夜は夜なべ','Working through the night'), text:L('ランタンを灯して、夜通し働く。'+BUILD.bath.n[0]+'があると疲れが軽くなる。','Lanterns lit, the work goes on all night. Build a '+BUILD.bath.n[1]+' to ease the fatigue.')}; }},
     {l:L('夜はしっかり休む','Rest at night'), d:L('幸福 +2','Happiness +2'), f:()=>{ addMood(2); }},
@@ -3721,8 +3723,37 @@ function doMode(i){
   if (mode.kind === 'build'){ const t = mode.type; place(t, i); if (!keys.Shift) cancelMode(); select(i); }
   else { moveBuilding(mode.from, i); cancelMode(); }
 }
+// 訪問中：見るだけの情報（名前・Lv・説明）
+function renderLook(i){
+  const c = S.cells[i], Lst = [];
+  let nm, lv = '';
+  if (c.t === 'b'){
+    const d = BUILD[c.b.type];
+    nm = c.b.type === 'warehouse' ? L('市場と桟橋','Market & Dock') : N(d.n);
+    if (c.b.type !== 'bell' && c.b.type !== 'warehouse') lv = ' Lv'+c.b.lvl;
+    if (c.b.type !== 'warehouse' && d.d) Lst.push(N(d.d));
+    if (c.b.type === 'house') Lst.push(L('屋根：','Roof: ')+N(HOUSE_STYLES[houseLook(c.b, c.r).s % HOUSE_STYLES.length]));
+    if (c.b.type === 'bell' && S.upg.dog) Lst.push(L('牧羊犬が番をしている','A sheepdog keeps watch'));
+  } else if (c.crop){
+    nm = N(CROPS[c.crop].n)+(c.t === 'tree' ? L('（実り）',' (ripe)') : L('（育成中）',' (growing)'));
+    Lst.push(N(CROPS[c.crop].d));
+  } else if (c.t === 'water'){
+    nm = c.spring ? L('湧き水と揚水水車','Spring & waterwheel') : L('川','River');
+    lv = c.spring ? ' Lv'+(S.upg.pump || 0) : '';
+    Lst.push(L('川の長さ ','River length ')+Math.max(0, riverCells().length - 1)+L('マス',' tiles'));
+  } else if (c.t === 'tree' || c.t === 'sapling'){
+    nm = isDairy ? (c.clover ? L('クローバー','Clover') : L('牧草','Grass')) : L('木','Tree');
+  } else if (c.t === 'rock'){
+    nm = isDairy ? N(ITEMS.salt.n) : L('岩','Rock');
+  } else { select(-1); return; }
+  setHTML(bpanelEl, '<div class="ph"><span>'+nm+lv+'</span><button class="btn x" data-act="unselect">×</button></div>'+(Lst.length ? '<div class="kv">'+Lst.join('<br>')+'</div>' : ''), 'b');
+}
+function lookAt(i){
+  if (i >= 0 && S.cells[i].t === 'occ') i = S.cells[i].of;
+  select(i >= 0 && !['grass','void'].includes(S.cells[i].t) ? i : -1);
+}
 function onClickCell(i, touch){
-  if (VISIT) return;
+  if (VISIT){ lookAt(i); return; }
   if (mode){
     if (i < 0) return;
     if (touch && (mode.kind === 'tool' || mode.kind === 'river')){ pending = -1; doMode(i); return; }          // 田畑と川は確認なしで次々に
@@ -3956,6 +3987,7 @@ function renderPlot(i){
     '<div class="seeds">'+opts+'</div>' + (c.crop ? '<div class="btns"><button class="btn" data-act="clearPlot">'+L('更地に戻す','Clear')+'</button></div>' : ''), 'b');
 }
 function renderBPanel(){
+  if (VISIT){ if (selCell >= 0) renderLook(selCell); return; }
   if (selCell < 0) return;
   const c = S.cells[selCell];
   if (isFarm && (c.t === 'grass' || (c.crop && c.t === 'sapling'))){ renderPlot(selCell); return; }
@@ -4098,7 +4130,7 @@ function doAct(actStr, el){
   }
   lastPanelHTML = ''; lastBHTML = ''; renderPanel(); renderBPanel(); renderTop();
 }
-$('#nsBtn').onclick = () => { S.nightShift = !S.nightShift; sfx('ui'); toast(S.nightShift ? L('夜勤ON：夜も働く。夜のあいだ幸福が下がる','Night shift ON: work at night, happiness drops') : L('夜勤OFF：夜は眠る','Night shift OFF: everyone sleeps'), S.nightShift?'bad':''); renderTop(); };
+$('#nsBtn').onclick = () => { S.nightShift = !S.nightShift; sfx('ui'); toast(S.nightShift ? L('夜勤ON：夜も働く（効率は昼の半分）。夜のあいだ幸福が下がる','Night shift ON: work at night at half efficiency, happiness drops') : L('夜勤OFF：夜は眠る','Night shift OFF: everyone sleeps'), S.nightShift?'bad':''); renderTop(); };
 const SPEEDS = DEBUG ? [1,2,4,20] : [1,2,4];
 $('#spdBtn').onclick = () => { S.speed = SPEEDS[(SPEEDS.indexOf(S.speed)+1) % SPEEDS.length]; renderTop(); };
 const chipsEl = $('#chips');
@@ -4955,7 +4987,7 @@ async function paintScore(g, kind, tx, tag){
     tx(L('ジオラマアイランド','Diorama Island'), 40, 64, 420, 30, '#fff');
     tx(L('ランク','Rank')+' '+R.rk+'『'+N(RANK_NAME.total[R.rk])+'』', 600, 64, 440, 28, rc, 'center');
     tx(fmt(R.total)+' / '+fmt(R.max), 1160, 66, 300, 40, PAP, 'right');
-    tx('sin1.studio/diorama', 1160, 640, 340, 20, HI, 'right');
+    tx(SITE_URL, 1160, 628, 400, 24, HI, 'right');
     return;
   }
   if (kind === ISLAND) g.drawImage(shareShot, PH.x, PH.y, PH.w, PH.h - PH.band);
@@ -4967,6 +4999,26 @@ async function paintScore(g, kind, tx, tag){
   tx('『'+N(RANK_NAME[kind][R.rk])+'』', 1061, 228, 208, 20, HI, 'center');
   shipBand(g, kind, tx, by);
 }
+const SITE_URL = 'https://sin1.studio/diorama/';
+// ロゴ2つ（写真の下の両すみ／総合は最下段）
+async function paintBrand(g, total){
+  const [game, studio] = await Promise.all([loadImg('assets/logo_t.png'), loadImg('assets/sin1studio.png')]);
+  g.save();
+  g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high';          // 筆文字がギザギザにならないよう、ここだけ補間
+  if (total){
+    if (game) g.drawImage(game, 36, 556, 98*game.width/game.height, 98);
+    if (studio) g.drawImage(studio, 480, 572, 240, 240*studio.height/studio.width);
+  } else {
+    const by = PH.y + PH.h - PH.band;
+    if (game){ const w = 196, hh = w*game.height/game.width; g.drawImage(game, 1176 - w, by - hh - 6, w, hh); }
+    if (studio){
+      const w = 226, hh = w*studio.height/studio.width, y = by - hh - 22;
+      g.fillStyle = 'rgba(27,31,58,.85)'; g.fillRect(28, y - 8, w + 24, hh + 18);
+      g.drawImage(studio, 40, y, w, hh);
+    }
+  }
+  g.restore();
+}
 function shipBand(g, kind, tx, by){
   g.fillStyle = '#1b1f3a'; g.fillRect(PH.x, by, PH.w, PH.band);
   const list = shipList(kind).slice(0, 3);
@@ -4977,7 +5029,7 @@ function shipBand(g, kind, tx, by){
     tx(N(o.txt), x, by + 68, 360, k ? 26 : 30, k ? '#f6ecc9' : '#ffd35a');
     if (o.like) tx(N(o.like), x, by + 98, 360, 19, '#a9b3e6');
   });
-  tx('sin1.studio/diorama', 1160, by + 30, 340, 18, '#ffd35a', 'right');
+  tx(SITE_URL, 1160, by + 30, 500, 22, '#ffd35a', 'right');
 }
 let shareShot = null, shareBlob = null, shareSeq = 0, shareKind = 'photo';
 function fitText(g, text, w, px){ do { g.font = px+'px DotGothic16, monospace'; } while (g.measureText(text).width > w && --px > 14); g.fillText(text, 0, 0); }
@@ -5005,6 +5057,7 @@ async function drawCard(){
     tag(28, 28, rows);
     shipBand(g, ISLAND, tx, PH.y + PH.h - PH.band);
   }
+  await paintBrand(g, shareKind === 'total');
   if (seq === shareSeq) publishCard(c, seq);
 }
 function publishCard(c, seq){
@@ -5070,8 +5123,9 @@ function shareAct(act){
 }
 function enterVisit(){
   document.body.classList.add('visiting');
+  $('#credit').hidden = false;
   const el = $('#visit'); el.hidden = false;
-  el.innerHTML = '<span><b>'+esc(cleanName(S.name) || N(islName(ISLAND)))+'</b><br><small>'+N(islName(ISLAND))+'　Day '+S.day+L('　を訪問中',' · visiting')+'</small></span><button class="btn hot" data-act="visitExit">'+L('自分の島で遊ぶ','Play my island')+'</button>';
+  el.innerHTML = '<span><b>'+esc(cleanName(S.name) || N(islName(ISLAND)))+'</b><br><small>'+N(islName(ISLAND))+'　Day '+S.day+L('　を訪問中',' · visiting')+'<br>'+L('建物をタップすると名前とLv','Tap a building for its name and level')+'</small></span><button class="btn hot" data-act="visitExit">'+L('自分の島で遊ぶ','Play my island')+'</button>';
   wearSocial();
   for (const e of socialEdges){ const k = routeKey(e.p.x, e.p.z, e.q.x, e.q.z); if (k) S.routes[k] = 0.9; }
   updatePaths();
