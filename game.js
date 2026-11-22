@@ -45,7 +45,29 @@ const ISLANDS = {
     craft:['cheese','aged'], forest:['milk','butter'], mid:'milk', hi:'cheese', top:'aged', axInd:[['aged',0.5],['butter',0.05]], axCraft:[['cheese',0.3]],
     contract:() => countB('creamery') ? 'cheese' : countB('churn') ? 'butter' : countB('barn') ? 'milk' : 'hay', sapT:30, spread:2, seedP:0.6},
 };
-const ISLAND = (() => { const q = /debug/.test(location.search) ? /[?&]isl=(\w+)/.exec(location.search)?.[1] : null; const k = q || saveBox.cur || 'sky'; return ISLANDS[k] ? k : 'sky'; })();
+/* 訪問リンク：#visit=<島の形>。サーバーは使わず、URLそのものに島が入っている */
+const SH_VER = 1, SH_ISL = ['sky','dairy','farm'];
+const SH_TYPES = ['warehouse','camp','quarry','forester','sawmill','workshop','smelter','factory','recycle','house','bakery','park','bath','fun','mower','saltpit','seeder','barn','churn','creamery','cellar'];
+const SH_NAME_MAX = 16, VISIT = (() => {
+  const m = /^#visit=([A-Za-z0-9_-]{100,1200})$/.exec(location.hash); if (!m) return null;
+  try {
+    const bin = atob(m[1].replace(/-/g,'+').replace(/_/g,'/')), b = Uint8Array.from(bin, ch => ch.charCodeAt(0));
+    if (b[0] !== SH_VER || !ISLANDS[SH_ISL[b[1]]]) return null;
+    let p = 2; const u8 = () => { if (p >= b.length) throw 0; return b[p++]; };
+    const v = {isl:SH_ISL[b[1]], day:(u8() << 8 | u8()) || 1, upg:u8(), mode:u8(), land:[u8(),u8(),u8(),u8()], cows:Math.min(24, u8()), bell:u8(), cells:[]};
+    const n = u8(); if (n > SH_NAME_MAX*4 || p + n > b.length) return null;
+    v.name = [...new TextDecoder().decode(b.slice(p, p+n))].slice(0, SH_NAME_MAX).join(''); p += n;
+    if (v.land.some(x => x > 11) || v.bell > 143) return null;
+    for (let i=0;i<144;i++){
+      const c = u8();
+      if (c < 16){ if (c > 6) return null; v.cells.push({c}); continue; }
+      const type = SH_TYPES[Math.floor((c-16)/5)]; if (!type) return null;
+      v.cells.push({c, type, lvl:(c-16)%5 + 1, look:type === 'house' ? u8() : 0});
+    }
+    return v;
+  } catch(e){ return null; }
+})();
+const ISLAND = (() => { if (VISIT) return VISIT.isl; const q = /debug/.test(location.search) ? /[?&]isl=(\w+)/.exec(location.search)?.[1] : null; const k = q || saveBox.cur || 'sky'; return ISLANDS[k] ? k : 'sky'; })();
 const ISL = ISLANDS[ISLAND];
 P.goal = ISL.goal; if (ISL.treeHP) P.treeHP = ISL.treeHP;
 const islName = k => ISLANDS[k]?.n || ['農耕の島','Farm Island'];
@@ -284,10 +306,12 @@ const postScene = new THREE.Scene();
 const postCam = new THREE.OrthographicCamera(-1,1,1,-1,0,1);
 postScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2,2), postMat));
 let rt;
+const VIEW = {w:0, h:0};          // 0 なら画面の大きさ
 function makeRT(){
   if (rt){ rt.depthTexture.dispose(); rt.dispose(); }
-  const sc = Math.min(innerWidth, innerHeight) < 600 ? Math.max(2, SET.pixel - 1) : SET.pixel;
-  const w = Math.max(64, Math.floor(innerWidth / sc)), h = Math.max(64, Math.floor(innerHeight / sc));
+  const VW = VIEW.w || innerWidth, VH = VIEW.h || innerHeight;
+  const sc = VIEW.w ? 2 : Math.min(VW, VH) < 600 ? Math.max(2, SET.pixel - 1) : SET.pixel;
+  const w = Math.max(64, Math.floor(VW / sc)), h = Math.max(64, Math.floor(VH / sc));
   const dt = new THREE.DepthTexture(w, h); dt.type = THREE.UnsignedIntType;
   rt = new THREE.WebGLRenderTarget(w, h, {minFilter:THREE.NearestFilter, magFilter:THREE.NearestFilter, depthTexture:dt, depthBuffer:true});
   postMat.uniforms.tColor.value = rt.texture; postMat.uniforms.tDepth.value = rt.depthTexture; postMat.uniforms.res.value.set(w, h);
@@ -300,7 +324,7 @@ const cam = new THREE.OrthographicCamera(-1,1,1,-1,5,95);
 const Z0 = TOUCH && innerHeight > innerWidth ? 1.35 : 1;
 const camS = {yaw:Math.PI/4, tyaw:Math.PI/4, pitch:0.6, zoom:Z0, tzoom:Z0, shake:0, tx:0, tz:0, x:0, z:0};
 function updateCam(){
-  const a = innerWidth / innerHeight, h = Math.max(13, 16 / a) / camS.zoom;
+  const a = (VIEW.w || innerWidth) / (VIEW.h || innerHeight), h = Math.max(13, 16 / a) / camS.zoom;
   cam.left = -h*a/2; cam.right = h*a/2; cam.top = h/2; cam.bottom = -h/2; cam.updateProjectionMatrix();
   postMat.uniforms.edgeTh.value = Math.max(0.0016, 3.2 * h / postMat.uniforms.res.value.y / (cam.far - cam.near));
   const d = 45, ty = -0.6;
@@ -2294,6 +2318,7 @@ function showEnding(){
     '<p class="kv">'+L('このあとは：<b>飛行船の改装</b>（新エリア）と<b>『空の遊園地』</b>（建設→暮らし）で観光客を呼べる。','What’s next: <b>refit the airship</b> (New Areas) and build a <b>Sky Fair</b> (Build → Living) to draw tourists.')+'</p>' +
     '<div class="opts"><button class="opt" data-act="closeModal"><div class="n">▶ '+L('このまま島を育てる','Keep building this island')+'</div></button>' +
     (sky ? '<button class="opt" data-act="travelMenu:dairy"><div class="n">▶ '+L('酪農の島へ渡る','Travel to the Dairy Island')+'</div><div class="d">'+L('新エリアからいつでも渡れる','Also available any time from New Areas')+'</div></button>' : '') +
+    '<button class="opt" data-act="share"><div class="n">▶ '+L('この島をシェアする','Share this island')+'</div><div class="d">'+L('絵はがき・訪問リンク・Xへのポスト','Postcard, visit link, post on X')+'</div></button>' +
     '<div style="height:14px"></div><button class="opt" data-act="confirmReset"><div class="n">▶ '+L('この島を最初からやり直して別の道を試す','Start this island over and try another path')+'</div><div class="d">'+L('選択が違えば、称号も変わる（今の島は「前のセーブに戻す」で戻せる）','Different choices, different title (you can restore this island later)')+'</div></button></div>');
   $('#modal').hidden = false; sfx('fanfare');
 }
@@ -2455,7 +2480,7 @@ function updateStrollers(dt){
   if (!dt) return;
   const h = hourOf(S.time), night = h >= 18.5 && h < 24.5, day = h >= 7 && h < 17.5;
   const es = night || day ? socialEdges.filter(e => e.night === night && e.len >= 1.45) : [];
-  const want = workerCount() ? Math.min(6, Math.ceil(es.length*0.8), workerCount()) : 0;
+  const ppl = VISIT ? 6 : workerCount(), want = ppl ? Math.min(6, Math.ceil(es.length*0.8), ppl) : 0;
   strollT -= dt;
   if (strollers.length < want && strollT <= 0){
     strollT = 0.9;
@@ -2489,7 +2514,7 @@ function critterAt(){
 }
 function petCritter(c){
   if (c.ref){
-    if (milkByHand(c.ref)) return;
+    if (!VISIT && milkByHand(c.ref)) return;
     const r = c.ref; popAt(r.x, 0.8, r.z, N(COW_NAMES[r.name])+'　'+L('乳 ','Milk ')+r.belly+'/'+COW.full);
   }
   const say = {rabbit:L('ぴょん！','Hop!'), sheep:L('メェ〜','Baa~'), cat:L('にゃー','Meow'), cow:L('モォ〜','Moo~'), bird:L('ピピッ','Tweet!')}[c.type];
@@ -2747,6 +2772,7 @@ cvs.addEventListener('contextmenu', e => e.preventDefault());
 cvs.addEventListener('wheel', e => { e.preventDefault(); camS.tzoom = clamp(camS.tzoom * (e.deltaY > 0 ? 0.9 : 1.1), 0.45, 2.8); }, {passive:false});
 const keys = {};
 addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT') return;          // 名前の入力中にカメラを動かさない
   keys[e.key] = true;
   if (e.key === 'Escape'){ if (mode) cancelMode(); else { closePanel(); select(-1); } }
   if (DEBUG && e.key === 'F8'){ S.gold += 5000; }
@@ -2781,6 +2807,7 @@ function doMode(i){
   else { moveBuilding(mode.from, i); cancelMode(); }
 }
 function onClickCell(i, touch){
+  if (VISIT) return;
   if (mode){
     if (i < 0) return;
     if (touch){ pending = i; showConfirm(); return; }   // スマホは「置く場所を選ぶ → ✓で決定」の2段階
@@ -3030,8 +3057,12 @@ document.addEventListener('pointerup', e => {
 });
 function doAct(actStr, el){
   const [act, ...rest] = actStr.split(':'), arg = rest.join(':');
+  if (VISIT && !['rotL','rotR','visitExit'].includes(act)) return;
   sfx('ui');
   switch (act){
+    case 'share': showShare(); return;
+    case 'shareX': case 'shareNative': case 'shareCopyImg': case 'shareSave': case 'shareLink': shareAct(act); return;
+    case 'visitExit': location.href = location.pathname + location.search; return;
     case 'panel': openPanel(arg); break;
     case 'closePanel': closePanel(); break;
     case 'tab': buildTab = arg; break;
@@ -3093,6 +3124,7 @@ function applySettings(){
   makeRT();
   $('#rot').style.display = TOUCH ? 'flex' : 'none';
   $('#btnBuild').textContent = L('建設','Build'); $('#btnUpg').textContent = L('アップグレード','Upgrades'); $('#btnMarket').textContent = L('市場','Market'); $('#btnArea').textContent = L('新エリア','New Areas');
+  $('#shareBtn').textContent = L('シェア','Share');
   $('#moodLbl').textContent = L('幸福','Happiness');
   $('#tutH').textContent = L('チュートリアル','Tutorial'); $('#tutSkip').textContent = L('スキップ','Skip');
   $('#goalH').textContent = ISLAND === 'sky' ? L('目標：空港を開いて飛行船を呼ぶ','Goal: open an airport for the airship') : L('目標：空港を開いて品評会の飛行船を呼ぶ','Goal: open an airport for the fair airship');
@@ -3180,7 +3212,7 @@ function needsCare(b){
   return !!(b.broken || (staffed(d) && !b.workers) || (staffed(d) && (b._fullT || 0) >= FULL_ALERT));
 }
 function urgentCells(){
-  if (!SET.alerts || S.tut >= 0) return [];
+  if (VISIT || !SET.alerts || S.tut >= 0) return [];
   return allB().filter(i => needsCare(S.cells[i].b)).slice(0, 10);
 }
 function updateAlerts(){
@@ -3321,7 +3353,7 @@ const OWNER_KEY = 'di_owner', SID = Math.random().toString(36).slice(2);
 function claimSave(){ try { localStorage.setItem(OWNER_KEY, SID); } catch(e){} }
 function isOwner(){ try { const o = localStorage.getItem(OWNER_KEY); return !o || o === SID; } catch(e){ return true; } }
 function catchUp(){ if (noSave || isOwner()) return; noSave = true; location.reload(); }
-claimSave();
+if (VISIT) noSave = true; else claimSave();          // 訪問中は自分のセーブに一切書かない
 addEventListener('pointerdown', catchUp, true);
 // ほかのタブで更新された分を消さないよう、書く直前に読み直して「今の島」だけを差しかえる
 function latestBox(){
@@ -3490,7 +3522,8 @@ function frame(now){
   if (!$('#modal').hidden) wdt = 0;
   else if (eventQueue.length && !curEvent && hitStop <= 0) showEvent(eventQueue.shift());
   const gdt = wdt * S.speed;
-  if (gdt > 0){ const n = Math.ceil(gdt / 0.05); for (let k=0;k<n;k++) sim(gdt/n); }
+  if (VISIT){ if (wdt) S.time = (S.time + wdt) % P.dayLen; }          // 見て回るだけ。時刻だけが流れる
+  else if (gdt > 0){ const n = Math.ceil(gdt / 0.05); for (let k=0;k<n;k++) sim(gdt/n); }
   // カメラ
   if (keys.ArrowLeft || keys.a || keys.A) camS.tyaw -= dt*1.8;
   if (keys.ArrowRight || keys.d || keys.D) camS.tyaw += dt*1.8;
@@ -3620,6 +3653,159 @@ function frame(now){
 addEventListener('resize', () => { renderer.setSize(innerWidth, innerHeight); makeRT(); });
 
 /* =========================================================
+   シェア：島に名前 → 絵はがき（画像）・訪問リンク・Xへの投稿画面
+   ========================================================= */
+const esc = t => String(t).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const cleanName = t => [...String(t || '').replace(/[\u0000-\u001f\u007f\u202a-\u202e\u2066-\u2069@＠#＃]/g,'')].slice(0, SH_NAME_MAX).join('').trim();
+const myName = () => cleanName(S.name) || N(islName(ISLAND));
+function visitURL(){
+  const U = S.upg, b = [SH_VER, SH_ISL.indexOf(ISLAND), S.day >> 8 & 255, S.day & 255,
+    Math.min(3, U.carry || 0) | Math.min(3, U.road || 0) << 2 | (S.drive || 0) << 4 | Math.min(3, S.airLvl || 0) << 6,
+    (S.airport ? 1 : 0) | (S.flags.skycow ? 2 : 0) | (S.flags.jersey ? 4 : 0) | (U.dog ? 8 : 0),
+    S.land.x0, S.land.x1, S.land.z0, S.land.z1, Math.min(24, S.herd?.length || 0), S.bell ?? WH];
+  const nm = new TextEncoder().encode(cleanName(S.name)); b.push(nm.length, ...nm);
+  S.cells.forEach((c, i) => {
+    if (c.t === 'b'){
+      const k = SH_TYPES.indexOf(c.b.type); if (k < 0){ b.push(0); return; }
+      b.push(16 + k*5 + clamp(c.b.lvl, 1, 5) - 1);
+      if (c.b.type === 'house'){ const L0 = houseLook(c.b, c.r); b.push(L0.s%4 | (L0.w%8) << 2 | (L0.r%8) << 5); }
+    } else b.push(c.t === 'tree' ? (c.clover ? 6 : 1) : c.t === 'sapling' ? 2 : c.t === 'rock' ? 3 : c.t === 'void' ? 4 : c.t === 'occ' ? 5 : 0);
+  });
+  return location.origin + location.pathname + '#visit=' + btoa(String.fromCharCode(...b)).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+}
+function visitState(){
+  const V = VISIT, s = newState(ISLAND);
+  s.name = cleanName(V.name); s.day = s.airFirst = V.day; s.time = P.dayLen*P.dayFrac*0.4; s.tut = -1; s.seed = V.cells.reduce((a,c,i) => (a*31 + c.c + i) % 1000, 7) + 0.5;
+  s.upg.carry = V.upg & 3; s.upg.road = Math.min(2, V.upg >> 2 & 3); s.drive = V.upg >> 4 & 3; s.airLvl = V.upg >> 6;
+  s.airport = !!(V.mode & 1); s.flags.skycow = !!(V.mode & 2); s.flags.jersey = !!(V.mode & 4); if (V.mode & 8) s.upg.dog = 1;
+  const [x0,x1,z0,z1] = V.land; s.land = {x0,x1,z0,z1};
+  s.cells = V.cells.map((c, i) => {
+    const r = hash(i, 5);
+    if (i === WH) return {t:'b', r, b:{type:'warehouse', lvl:1, workers:0, inb:0, st:{}, prog:0, build:0}};
+    if (!c.type || c.type === 'warehouse' || !BUILD[c.type] || !islOk(BUILD[c.type]))
+      return c.c === 1 || c.c === 6 ? {t:'tree', hp:P.treeHP, r, clover:c.c === 6} : c.c === 2 ? {t:'sapling', g:0.5, r} : c.c === 3 ? {t:'rock', hp:P.rockHP, r} : c.c === 4 ? {t:'void'} : {t:'grass', r};
+    const b = {type:c.type, lvl:c.lvl, workers:0, inb:0, st:{}, prog:0, build:0};
+    if (c.type === 'house') b.look = {s:c.look & 3, w:(c.look >> 2 & 7) % HOUSE_WALLS.length, r:(c.look >> 5) % HOUSE_ROOFS.length};
+    return {t:'b', r, b};
+  });
+  // 2×2の建物のふさぎマスは、ここで正しく組み直す
+  s.cells.forEach((c, i) => {
+    if (c.t !== 'b' || (BUILD[c.b.type].size || 1) < 2) return;
+    if (cx(i)+2 > W || cz(i)+2 > W || footCells(i,2).some(j => j !== i && s.cells[j].t !== 'grass')){ s.cells[i] = {t:'grass', r:c.r}; return; }
+    for (const j of footCells(i,2)) if (j !== i) s.cells[j] = {t:'occ', of:i};
+  });
+  if (ISLAND === 'dairy'){
+    s.bell = s.cells[V.bell].t === 'void' ? WH : V.bell; s.soil = {}; s.herd = [];
+    const bp = wpos(s.bell);
+    for (let k=0;k<V.cows;k++){ const a = k*2.4, r = 0.7 + (k%4)*0.45; s.herd.push({name:k % COW_NAMES.length, x:clamp(bp.x + Math.cos(a)*r, -5, 5), z:clamp(bp.z + Math.sin(a)*r, -5, 5), face:a, belly:k%5, load:0, total:0, tgt:-1, wait:-1, t:0, eating:k%2 === 0}); }
+  }
+  return s;
+}
+// いまの角度のまま、島全体が収まる構図で撮る
+function snapIsland(w, h){
+  const keep = {...camS}, off = [hover, marker, ringG, ...alertMarks].map(o => [o, o.visible]);
+  for (const [o] of off) o.visible = false;
+  if (ghost) ghost.visible = false;
+  VIEW.w = w; VIEW.h = h;
+  Object.assign(camS, {zoom:1.14, x:0, z:0.5, shake:0});
+  renderer.setSize(w, h, false); makeRT(); updateCam();
+  renderer.setRenderTarget(rt); renderer.render(scene, cam);
+  renderer.setRenderTarget(null); renderer.render(postScene, postCam);
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  c.getContext('2d').drawImage(cvs, 0, 0);          // 描いた直後でないと空になる
+  VIEW.w = VIEW.h = 0; Object.assign(camS, keep);
+  renderer.setSize(innerWidth, innerHeight); makeRT(); updateCam();
+  for (const [o, v] of off) o.visible = v;
+  return c;
+}
+let shareShot = null, shareBlob = null, shareSeq = 0;
+function fitText(g, text, w, px){ do { g.font = px+'px DotGothic16, monospace'; } while (g.measureText(text).width > w && --px > 14); g.fillText(text, 0, 0); }
+async function drawCard(){
+  const seq = ++shareSeq; shareBlob = null;
+  try { await document.fonts.load('32px DotGothic16', 'ジオラマ島'+myName()); } catch(e){}
+  if (seq !== shareSeq || !shareShot) return;
+  const c = document.createElement('canvas'); c.width = 1200; c.height = 675;
+  const g = c.getContext('2d'), PAP = '#f6ecc9', INK = '#1b1f3a', HI = '#ffd35a';
+  g.fillStyle = PAP; g.fillRect(0, 0, 1200, 675);
+  g.fillStyle = INK; g.fillRect(16, 16, 1168, 643);
+  g.drawImage(shareShot, 28, 28);
+  const X = 812, w = 356, line = (t, y, px, col) => { g.save(); g.translate(X, y); g.fillStyle = col; fitText(g, t, w, px); g.restore(); };
+  line(L('ジオラマアイランド','Diorama Island'), 78, 24, '#a9b3e6');
+  line(myName(), 142, 46, '#fff');
+  line(N(islName(ISLAND))+'　Day '+S.day, 186, 24, '#a9b3e6');
+  g.fillStyle = '#4a5290'; g.fillRect(X, 210, w, 3);
+  const st = S.stats, rows = [
+    [L('称号','Title'), '『'+N(evaluate().main[0])+'』', HI],
+    [L('稼いだ総額','Total earned'), fmt(st.earned)+' G', PAP],
+    [L('平均幸福','Avg happiness'), String(Math.round(st.moodN ? st.moodSum/st.moodN : S.mood)), PAP],
+  ];
+  const star = starCow();
+  if (star) rows.push([L('看板牛','Star cow'), N(COW_NAMES[star.name])+(star.total ? L('（乳 '+star.total+'）',' ('+star.total+' milk)') : ''), '#ffb8d8']);
+  else if (S.story.length) rows.push([L('最近のできごと','Latest chapter'), N(S.story[S.story.length-1].t), PAP]);
+  rows.forEach(([a, b, col], k) => { line(a, 256 + k*86, 20, '#a9b3e6'); line(b, 294 + k*86, 30, col); });
+  line('sin1.studio/diorama', 630, 24, HI);
+  c.toBlob(b => {
+    if (!b || seq !== shareSeq) return;
+    shareBlob = b;
+    const im = $('#shareImg'); if (!im) return;
+    if (im.dataset.u) URL.revokeObjectURL(im.dataset.u);
+    im.src = im.dataset.u = URL.createObjectURL(b);
+    for (const e of document.querySelectorAll('[data-needimg]')) e.disabled = false;
+  }, 'image/png');
+}
+function showShare(){
+  if (VISIT) return;
+  closePanel(); select(-1); cancelMode();
+  shareShot = snapIsland(756, 618);
+  let canFiles = false;
+  try { canFiles = !!navigator.canShare?.({files:[new File(['x'], 'a.png', {type:'image/png'})]}); } catch(e){}
+  const b = (act, label, img, hot) => '<button class="btn'+(hot?' hot':'')+'" data-act="'+act+'" '+(img?'data-needimg disabled':'')+'>'+label+'</button>';
+  $('#modal .mbox').innerHTML = '<h2>'+L('島をシェア','Share your island')+'</h2>' +
+    '<label class="kv">'+L('島の名前','Island name')+'<input id="nameIn" maxlength="'+SH_NAME_MAX+'" autocomplete="off"></label>' +
+    '<img id="shareImg" class="shareimg" alt="">' +
+    '<div class="bgrid">' + b('shareX', L('Xにポスト','Post on X'), true, true) + (canFiles ? b('shareNative', L('画像つきで共有','Share with image'), true, true) : '') + b('shareCopyImg', L('画像をコピー','Copy image'), true) +
+    b('shareSave', L('画像を保存','Save image'), true) + b('shareLink', L('訪問リンクをコピー','Copy visit link'), false) + '</div>' +
+    '<p class="kv" style="color:var(--sub)">'+L('リンクを開いた人は、いまのあなたの島を見て回れます（相手のセーブには影響しません）。Xには画像が自動では付かないので、コピーか保存をして貼ってください。','Anyone opening the link can look around your island as it is now (their save is untouched). X cannot attach the image automatically, so copy or save it and paste it in.')+'</p>' +
+    '<div class="opts"><button class="opt" data-act="closeModal"><div class="n">◀ '+L('もどる','Back')+'</div></button></div>';
+  const inp = $('#nameIn'); inp.value = cleanName(S.name); inp.placeholder = N(islName(ISLAND));
+  inp.addEventListener('input', () => { S.name = cleanName(inp.value); for (const e of document.querySelectorAll('[data-needimg]')) e.disabled = true; drawCard(); });
+  inp.addEventListener('change', save);
+  $('#modal').hidden = false;
+  drawCard();
+}
+const shareText = () => L('「'+myName()+'」Day '+S.day+'『'+evaluate().main[0][0]+'』\n空に浮かぶわたしの島、見に来てね！\n#ジオラマアイランド','“'+myName()+'” Day '+S.day+': '+evaluate().main[0][1]+'\nCome visit my island in the sky!\n#DioramaIsland');
+function copyText(t){
+  const done = () => toast(L('訪問リンクをコピーした','Visit link copied'), 'good');
+  const manual = () => { const a = document.createElement('input'); a.value = t; a.readOnly = true; $('#modal .mbox').appendChild(a); a.select(); toast(L('このリンクをコピーしてください','Copy this link'), 'ev'); };
+  try { navigator.clipboard.writeText(t).then(done, manual); } catch(e){ manual(); }
+}
+function shareAct(act){
+  if (act === 'shareLink'){ copyText(visitURL()); return; }
+  if (!shareBlob) return;
+  if (act === 'shareX'){
+    // 投稿画面を開くだけ。投稿するかどうかは本人が決める
+    window.open('https://x.com/intent/post?text='+encodeURIComponent(shareText())+'&url='+encodeURIComponent(visitURL()), '_blank', 'noopener');
+  } else if (act === 'shareNative'){
+    navigator.share({files:[new File([shareBlob], 'diorama-island.png', {type:'image/png'})], text:shareText()+'\n'+visitURL()}).catch(()=>{});
+  } else if (act === 'shareCopyImg'){
+    const ng = () => toast(L('コピーできなかった。「画像を保存」を使ってください','Could not copy. Use “Save image” instead'), 'bad');
+    try { navigator.clipboard.write([new ClipboardItem({'image/png':shareBlob})]).then(() => toast(L('画像をコピーした。投稿画面に貼り付けられる','Image copied. Paste it into your post'), 'good'), ng); } catch(e){ ng(); }
+  } else if (act === 'shareSave'){
+    const a = document.createElement('a'); a.href = URL.createObjectURL(shareBlob); a.download = 'diorama-island-day'+S.day+'.png';
+    document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  }
+}
+function enterVisit(){
+  document.body.classList.add('visiting');
+  const el = $('#visit'); el.hidden = false;
+  el.innerHTML = '<span><b>'+esc(cleanName(S.name) || N(islName(ISLAND)))+'</b><br><small>'+N(islName(ISLAND))+'　Day '+S.day+L('　を訪問中',' · visiting')+'</small></span><button class="btn hot" data-act="visitExit">'+L('自分の島で遊ぶ','Play my island')+'</button>';
+  wearSocial();
+  for (const e of socialEdges){ const k = routeKey(e.p.x, e.p.z, e.q.x, e.q.z); if (k) S.routes[k] = 0.9; }
+  updatePaths();
+}
+addEventListener('hashchange', () => { if (VISIT || location.hash.startsWith('#visit=')){ if (!VISIT) save(); noSave = true; location.reload(); } });
+
+/* =========================================================
    起動
    ========================================================= */
 function showTitle(){
@@ -3633,11 +3819,11 @@ function showTitle(){
     (backups().length ? '<button class="opt" data-act="restoreMenu"><div class="n">'+L('前のセーブに戻す','Restore a save')+'</div><div class="d">'+L('毎朝の自動保存・やり直す前の島','Morning autosaves and islands before a restart')+'</div></button>' : '') + '</div>');
   $('#modal').hidden = false;
 }
-S = load() || newState();
+S = VISIT ? visitState() : (load() || newState());
 for (const k of ITEM_KEYS){ S.items[k] ??= 0; S.sat[k] ??= 1; S.stats.made[k] ??= 0; S.stats.soldBy[k] ??= 0; }
 makeClouds();
 orderChips();
-const grazingIsNew = initHerd();
+const grazingIsNew = !VISIT && initHerd();
 initWorld();
 spawnCritters();
 // 放牧が入る前から遊んでいる酪農の島には、遊び方を一度だけ知らせる
@@ -3645,7 +3831,7 @@ if (grazingIsNew && !S.arrived && S.day > 1) eventQueue.push({result:true, img:'
 applySettings();
 renderTop();
 if (S.tut < 0) for (const e of EVENTS) if (e.fixed && islOk(e) && !S.doneEvents[e.id] && S.day >= e.fixed){ queuedIds[e.id] = true; const E = e.make(); E.id = e.id; eventQueue.push(E); }
-if (S.arrived) showArrival(); else showTitle();
+if (VISIT){ enterVisit(); eventQueue.length = 0; } else if (S.arrived) showArrival(); else showTitle();
 requestAnimationFrame(frame);
 
 // テスト・デバッグ用の窓口
@@ -3654,6 +3840,7 @@ window.DTT = {get S(){return S;}, P, W, WH, place, hire, levelUp, sell, clickCel
   skipTut:()=>{S.tut=-1;$('#tut').hidden=true;}, reset:resetGame,
   screenOf:(i)=>{const p=wpos(i); return toScreen(p.x,0,p.z);},
   bench:(n=30)=>{const px=new Uint8Array(4);const gl=renderer.getContext();const t0=performance.now();for(let k=0;k<n;k++){renderer.setRenderTarget(rt);renderer.render(scene,cam);renderer.setRenderTarget(null);renderer.render(postScene,postCam);gl.readPixels(0,0,1,1,gl.RGBA,gl.UNSIGNED_BYTE,px);}return (performance.now()-t0)/n;},
+  visitURL, showShare, get shareBlob(){return shareBlob;}, VISIT,
   setBell, milkByHand, buyCow, cowCost, cowCap, pastureAt, isMud,
   demolish, setDrive, updatePaths, regroup, entryOf, nodePt, strollers, razes, postMesh, pathMesh, get socialEdges(){return socialEdges;},
   ISL, ISLAND, BUILD, ITEMS, travel, save, showEnding, showTravel, pop, housing,
