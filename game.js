@@ -118,10 +118,20 @@ const UPGS = [
     d:['気球が来るたびに、選んだ品物を自動で売る','Each balloon visit auto-sells the goods you choose.']},
   {id:'axe',   n:['よく切れる道具','Sharp Tools'], cost:[200,1200,5000],
     d:['クリックの収穫+1・伐採と採掘が速くなる','+1 per click; faster chopping and mining.']},
-  {id:'carry', n:['丈夫な背負子','Sturdy Packs'], cost:[300,1500,6000],
-    d:['一度に運べる量が増える','Workers carry more at once.']},
-  {id:'road',  n:['石畳の道','Cobblestone'], cost:[800,3000],
-    d:['よく通る道が石畳になり、その上は速く歩ける','Worn paths get paved, and walking on them is faster.']},
+  {id:'carry', n:['運ぶ道具','Hauling Gear'], cost:[300,1500,6000], tiers:[
+    [['丈夫な背負子','Sturdy Packs'], ['みんなが一度に運べる量が増える','Everyone carries more at once.']],
+    [['人力車','Rickshaw'], ['運搬係が荷車を引く。一度に10個・足も15%速く','Haulers pull carts: 10 at once and 15% faster.']],
+    [['馬車','Horse Carriage'], ['運搬係が馬車に。一度に16個・足も35%速く','Haulers drive carriages: 16 at once and 35% faster.']]]},
+  {id:'road',  n:['道','Roads'], cost:[800,3000], tiers:[
+    [['石畳の道','Cobblestone'], ['よく通る道が石畳になり、その上は速く歩ける','Worn paths get paved, and walking on them is faster.']],
+    [['街灯のある道','Lamplit Roads'], ['石畳に街灯が立ち、さらに速く歩ける。夜の作業と移動 +30%','Street lamps line the paving for faster walking. Night work and walking +30%.']]]},
+];
+// 働き方：幸福を削って、効率ともうけを取る（1日1回だけ変えられる）
+const DRIVE = [
+  {n:['ふつうに働く','Normal'],              work:1,    sale:1,    mood:0,   d:['幸福そのまま','No change']},
+  {n:['ノルマの掲示板','Quota Board'],       work:1.25, sale:1,    mood:-8,  d:['作業 +25%、幸福 -8','Work +25%, happiness -8']},
+  {n:['鬼監督と鐘','Slave-driver’s Bell'],   work:1.6,  sale:1.1,  mood:-18, d:['作業 +60%、売値 +10%、幸福 -18','Work +60%, sales +10%, happiness -18']},
+  {n:['金の豚さま','The Golden Pig'],        work:2.1,  sale:1.25, mood:-30, d:['作業 +110%、売値 +25%、幸福 -30。緑の再生が半分、空がくすみ、毎朝15%で機械が壊れる','Work +110%, sales +25%, happiness -30. Regrowth halved, hazy skies, 15% chance of a breakdown each morning']},
 ];
 const HOUSE_WALLS = [0xf2d9b0, 0xd9e6f2, 0xf2c9c9, 0xd8f0c8, 0xf0e6a8, 0xe4e4e4, 0xc9b8e8];
 const HOUSE_ROOFS = [0xd05a4a, 0x4a6ab0, 0x3a8a6a, 0xa05ac0, 0xd08a3a, 0x5a5a5a, 0x2a8ab0];
@@ -317,8 +327,14 @@ sun.shadow.bias = -0.002;
 scene.add(sun); scene.add(sun.target);
 const festLight = new THREE.PointLight(0xff9040, 0, 4, 2); scene.add(festLight);
 const LIGHT_N = 8, lightPool = [];
-const glowMat = new THREE.MeshBasicMaterial({color:0xffffff, transparent:true, opacity:0, blending:THREE.AdditiveBlending, depthWrite:false});
-const glowMesh = new THREE.InstancedMesh(new THREE.CircleGeometry(0.4, 12).rotateX(-Math.PI/2), glowMat, 160); glowMesh.count = 0; glowMesh.setColorAt(0, new THREE.Color(0xffa848)); scene.add(glowMesh);
+// 光だまりは中心が明るく、ふちへ向かって消える
+function glowGeo(r){
+  const g = new THREE.CircleGeometry(r, 20).rotateX(-Math.PI/2), n = g.attributes.position.count, c = new Float32Array(n*3);
+  c[0] = c[1] = c[2] = 1;
+  g.setAttribute('color', new THREE.BufferAttribute(c, 3)); return g;
+}
+const glowMat = new THREE.MeshBasicMaterial({vertexColors:true, color:0xffffff, transparent:true, opacity:0, blending:THREE.AdditiveBlending, depthWrite:false});
+const glowMesh = new THREE.InstancedMesh(glowGeo(0.55), glowMat, 160); glowMesh.count = 0; glowMesh.setColorAt(0, new THREE.Color(0xffa848)); scene.add(glowMesh);
 for (let i=0;i<LIGHT_N;i++){ const l = new THREE.PointLight(0xffb060, 0, 2.6, 2); l.position.set(0,-10,0); scene.add(l); lightPool.push({l, cell:-1, fire:false}); }
 
 /* ---- マテリアルと形 */
@@ -383,44 +399,107 @@ const pathMesh = new THREE.InstancedMesh(new THREE.BoxGeometry(1,0.02,1), MT(0xf
 pathMesh.receiveShadow = true; pathMesh.count = 0; scene.add(pathMesh);
 const PATH_C = new THREE.Color(0xcfb27a), PAVE_C = new THREE.Color(0xb3afa8);
 const q2 = v => Math.round(v*2)/2;
+const simNow = () => (S.day-1)*P.dayLen + S.time;
+const routeUsed = new Map();           // 道を最後に誰かが歩いた時刻（保存しない）
 function routeKey(x1, z1, x2, z2){
   const a = [q2(x1), q2(z1)], b = [q2(x2), q2(z2)];
   if (a[0] === b[0] && a[1] === b[1]) return null;
   return (a[0] < b[0] || (a[0] === b[0] && a[1] < b[1]) ? a.concat(b) : b.concat(a)).join(',');
 }
-function wearRoute(key, len, dt){ S.routes[key] = Math.min(1, (S.routes[key] || 0) + dt * 0.05 / Math.max(1, len)); }
+function wearRoute(key, len, dt){ S.routes[key] = Math.min(1, (S.routes[key] || 0) + dt * 0.05 / Math.max(1, len)); routeUsed.set(key, simNow()); }
+
+// となり合う同じ種類の建物はひとかたまり：道の入口は市場にいちばん近い1つだけ。中は建物づたいに歩く
+let entryMap = {};
+const entryOf = i => entryMap[i] ?? i;
+function nodePt(i){ return i === WH ? whPt({ox:0}) : S.cells[i].t === 'b' ? bPt(i, {ox:0}) : wpos(i); }
+function regroup(){
+  entryMap = {};
+  const seen = new Set(), m = whPt({ox:0}), far = i => { const p = bPt(i, {ox:0}); return Math.hypot(p.x - m.x, p.z - m.z); };
+  for (const i of allB()){
+    if (i === WH || seen.has(i)) continue;
+    const type = S.cells[i].b.type, grp = [i]; seen.add(i);
+    for (let q=0; q<grp.length; q++) for (const f of footCells(grp[q], bSize(grp[q]))) for (const n of neigh8(f)){
+      const j = ownerOf(n); if (!seen.has(j) && j !== WH && isB(j, type)){ seen.add(j); grp.push(j); }
+    }
+    let best = i; for (const j of grp) if (far(j) < far(best)) best = j;
+    for (const j of grp) entryMap[j] = best;
+  }
+}
+// 離れて建つ同じ種類の建物（家と家、小屋と小屋…）は、いちばん短いつなぎ方で全部が道でつながる
+let socialEdges = [];
+function wearSocial(){
+  socialEdges = [];
+  const byType = {};
+  for (const i of allB()) if (i !== WH && S.cells[i].b.build <= 0) (byType[S.cells[i].b.type] ||= new Set()).add(entryOf(i));
+  for (const type in byType){
+    const rest = [...byType[type]], done = rest.splice(0, 1);
+    while (rest.length){
+      let best = null;
+      for (const a of done) for (const b of rest){ const p = nodePt(a), q = nodePt(b), len = Math.hypot(p.x - q.x, p.z - q.z); if (!best || len < best.len) best = {b, p, q, len, night: type === 'house'}; }
+      done.push(best.b); rest.splice(rest.indexOf(best.b), 1); socialEdges.push(best);
+    }
+  }
+  for (const e of socialEdges){
+    const k = routeKey(e.p.x, e.p.z, e.q.x, e.q.z); if (!k) continue;
+    if ((S.routes[k] || 0) < 0.5) S.routes[k] = Math.min(0.5, (S.routes[k] || 0) + 0.04);
+    routeUsed.set(k, simNow());
+  }
+}
+// 行き先のなくなった道（引っ越し・撤去・木を伐った跡）は早く、歩かれなくなった道はゆっくり薄れて消える
 function decayRoutes(){
-  const ks = Object.keys(S.routes);
-  for (const k of ks){ S.routes[k] *= 0.995; if (S.routes[k] < 0.03) delete S.routes[k]; }
+  const live = new Set(), add = p => live.add(q2(p.x)+','+q2(p.z)), now = simNow(), e = dockEdge();
+  for (const i of allB()){ add(nodePt(i)); add(bCenter(i)); }
+  for (let i=0;i<W*W;i++) if (S.cells[i].t === 'tree' || S.cells[i].t === 'rock') add(wpos(i));
+  add(PLAZA); add({x:e.x, z:e.z + 1.3}); add({x:e.x, z:e.z - 0.25});
+  for (const k in S.routes){
+    const [a, b, c, d] = k.split(',');
+    if (!routeUsed.has(k)) routeUsed.set(k, now);
+    const f = !live.has(a+','+b) || !live.has(c+','+d) ? 0.9 : now - routeUsed.get(k) > 100 ? 0.97 : 0.995;
+    S.routes[k] *= f;
+    if (S.routes[k] < 0.03){ delete S.routes[k]; routeUsed.delete(k); }
+  }
   const left = Object.keys(S.routes);
   if (left.length > ROUTE_MAX) left.sort((a,b)=>S.routes[a]-S.routes[b]).slice(0, left.length - ROUTE_MAX).forEach(k=>delete S.routes[k]);
 }
-// 同じ種類の建物どうし（家と家、工房と工房…）も、行き来する細い道でつながる
-function wearSocial(){
-  const done = new Set(), act = i => { const b = S.cells[i].b, d = BUILD[b.type]; return b.build <= 0 && (b.workers > 0 || d.housing || d.mood); };
-  for (const i of allB()){
-    const b = S.cells[i].b; if (b.type === 'warehouse' || !act(i)) continue;
-    let best = -1, bd = 99;
-    for (const j of allB(b.type)){ if (j === i || !act(j)) continue; const d = cheb(i, j); if (d < bd){ bd = d; best = j; } }
-    if (best < 0 || bd > 4) continue;
-    const pk = Math.min(i, best) + ',' + Math.max(i, best); if (done.has(pk)) continue; done.add(pk);
-    const a = bPt(i, {ox:0}), c = bPt(best, {ox:0}), key = routeKey(a.x, a.z, c.x, c.z);
-    if (key) wearRoute(key, Math.hypot(a.x - c.x, a.z - c.z), 2*0.06);
-  }
-}
+
+// 街灯（石畳の次の段階）：よく通る道に沿って立つ
+const POST_MAX = 90;
+const postMesh = new THREE.InstancedMesh(new THREE.BoxGeometry(0.035,0.5,0.035), MT(0x3a3a44), POST_MAX);
+const postHead = new THREE.InstancedMesh(new THREE.BoxGeometry(0.1,0.1,0.1), lampMat(0xffe6a0), POST_MAX);
+const postGlow = new THREE.InstancedMesh(glowGeo(0.7), glowMat, POST_MAX);
+for (const m of [postMesh, postHead, postGlow]){ m.count = 0; m.frustumCulled = false; scene.add(m); }
+postGlow.setColorAt(0, new THREE.Color(0xffc870));
+
+const GRASS_C = TILE_A.clone().lerp(TILE_B, 0.5);
 function updatePaths(){
-  const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0,1,0), sc = new THREE.Vector3(), ps = new THREE.Vector3(), col = new THREE.Color();
-  let n = 0;
+  const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0,1,0), sc = new THREE.Vector3(), ps = new THREE.Vector3(), col = new THREE.Color(), glow = new THREE.Color(0xffc870);
+  let n = 0; const posts = [];
   for (const k in S.routes){
-    const wv = S.routes[k]; if (wv < 0.2 || n >= ROUTE_MAX) continue;
+    const wv = S.routes[k]; if (wv < 0.14 || n >= ROUTE_MAX) continue;
     const [x1, z1, x2, z2] = k.split(',').map(Number), dx = x2 - x1, dz = z2 - z1, len = Math.hypot(dx, dz);
+    if (len < 1.45) continue;                                  // となり同士の短い線は描かない（塗りつぶしたようになるため）
+    const vis = clamp((wv - 0.14)/0.3, 0, 1), paved = S.upg.road && wv > 0.45;
     q.setFromAxisAngle(up, Math.atan2(dx, dz));
-    sc.set(0.05 + Math.min(0.06, wv*0.07), 1, len + 0.05);
+    sc.set((0.035 + Math.min(0.075, wv*0.075)) * Math.min(1, len/2.5), 1, len + 0.03);
     ps.set((x1+x2)/2, 0.01 + (n%6)*0.0015, (z1+z2)/2);
     m4.compose(ps, q, sc); pathMesh.setMatrixAt(n, m4);
-    col.copy(S.upg.road && wv > 0.45 ? PAVE_C : PATH_C); col.offsetHSL(0, 0, (1-Math.min(1,wv))*0.05); pathMesh.setColorAt(n, col); n++;
+    col.copy(GRASS_C).lerp(paved ? PAVE_C : PATH_C, vis); pathMesh.setColorAt(n, col); n++;
+    if (S.upg.road < 2 || !paved) continue;
+    const num = Math.max(1, Math.floor(len/1.5));
+    for (let j=0; j<num && posts.length < POST_MAX; j++) for (const side of [1,-1]){
+      const t = (j+0.5)/num, x = x1 + dx*t + dz/len*0.2*side, z = z1 + dz*t - dx/len*0.2*side;
+      if (Math.abs(x) >= W/2 || Math.abs(z) >= W/2 || !['grass','sapling'].includes(S.cells[cellAt(x, z)].t)) continue;
+      if (!posts.some(([a, b]) => Math.hypot(a-x, b-z) < 1.2)) posts.push([x, z]);
+      break;
+    }
   }
   pathMesh.count = n; pathMesh.instanceMatrix.needsUpdate = true; if (pathMesh.instanceColor) pathMesh.instanceColor.needsUpdate = true;
+  posts.forEach(([x, z], k) => {
+    postMesh.setMatrixAt(k, m4.makeTranslation(x, 0.25, z));
+    postHead.setMatrixAt(k, m4.makeTranslation(x, 0.54, z));
+    postGlow.setMatrixAt(k, m4.makeTranslation(x, 0.02, z)); postGlow.setColorAt(k, glow);
+  });
+  for (const m of [postMesh, postHead, postGlow]){ m.count = posts.length; m.instanceMatrix.needsUpdate = true; if (m.instanceColor) m.instanceColor.needsUpdate = true; }
 }
 
 // 島の断面：まわりの崖は地層。桟橋（南）の両隣の面は「断面図」になっていて、
@@ -976,6 +1055,40 @@ function makeWorkerMesh(job){
   return g;
 }
 
+// 運ぶ道具の見た目：背負子（全員）→ 人力車 → 馬車（運搬係）
+function setGear(m, job, tier){
+  const u = m.userData; if (u.tier === tier) return;
+  u.tier = tier;
+  if (u.gear) m.remove(u.gear);
+  const g = new THREE.Group(); u.gear = g; u.cargo = null; u.wheels = []; u.horse = null;
+  m.add(g);
+  if (!tier) return;
+  if (job !== 'haul' || tier === 1){
+    g.add(part(G.box, 0x7a4a2a, 0.15,0.2,0.05, 0,0.19,-0.085)); g.add(part(G.box, 0xc8a060, 0.11,0.12,0.06, 0,0.2,-0.12));
+    return;
+  }
+  const car = tier === 3, cz0 = car ? -0.36 : -0.36;
+  const wheel = (x, z, r) => { const h = new THREE.Group(); h.position.set(x, r, z); const ty = part(G.cyl, 0x3a2a1a, r,0.035,r, 0,0,0); ty.rotation.z = Math.PI/2; h.add(ty); h.add(part(G.box, 0xe8c070, 0.04,r*1.5,0.03, 0,0,0)); g.add(h); u.wheels.push(h); };
+  g.add(part(G.box, car ? 0xa03a2a : 0xb88a54, car ? 0.28 : 0.22,0.1,car ? 0.4 : 0.28, 0,0.17,cz0));
+  u.cargo = new THREE.Group();
+  for (let k=0; k<(car?4:2); k++) u.cargo.add(part(G.box, 0xffffff, 0.12,0.12,0.12, (k%2 ? 0.07 : -0.07),0.28,cz0 + (car ? (k < 2 ? -0.09 : 0.09) : 0)));
+  g.add(u.cargo);
+  if (!car){
+    wheel(-0.14, cz0, 0.13); wheel(0.14, cz0, 0.13);
+    for (const x of [-0.09, 0.09]) g.add(part(G.box, 0x7a4a2a, 0.025,0.025,0.42, x,0.17,-0.1));
+    return;
+  }
+  for (const z of [cz0-0.13, cz0+0.13]){ wheel(-0.17, z, 0.11); wheel(0.17, z, 0.11); }
+  for (const x of [-0.11, 0.11]) g.add(part(G.box, 0x7a4a2a, 0.025,0.025,0.6, x,0.2,0.05));
+  const ho = new THREE.Group(); ho.position.z = 0.34; u.horse = ho;
+  ho.add(part(G.box, 0x9a6038, 0.16,0.17,0.3, 0,0.25,0));
+  const neck = part(G.box, 0x9a6038, 0.09,0.22,0.1, 0,0.37,0.16); neck.rotation.x = 0.4; ho.add(neck);
+  ho.add(part(G.box, 0x9a6038, 0.1,0.1,0.18, 0,0.48,0.24)); ho.add(part(G.box, 0x3a2418, 0.04,0.2,0.06, 0,0.42,0.1));
+  ho.add(part(G.box, 0x3a2418, 0.04,0.16,0.04, 0,0.22,-0.17));
+  for (const [x,z] of [[-.06,-.11],[.06,-.11],[-.06,.11],[.06,.11]]) ho.add(part(G.box, 0x6a4028, 0.04,0.18,0.04, x,0.09,z));
+  g.add(ho);
+}
+
 /* ---- セルのメッシュ管理 */
 const CM = [];
 let pickables = [];
@@ -1000,6 +1113,9 @@ const allB = type => { const r=[]; for (let i=0;i<W*W;i++) if (isB(i,type)) r.pu
 const countB = type => allB(type).length;
 const treeCount = () => S.cells.filter(c=>c.t==='tree').length;
 const workerCount = () => workers.length;
+const driveOf = () => DRIVE[S.drive || 0];
+const lampNight = () => S.upg.road >= 2 && isNight() ? 1.3 : 1;
+const workF = () => driveOf().work * lampNight();
 const pop = () => workerCount() + (S.idle || 0);          // 働いている人＋手の空いた移住者
 const canHire = b => b.workers < slots(b) && (S.idle > 0 || (S.gold >= hireCost() && pop() < housing()));
 const hireTxt = () => L('雇う','Hire') + ' ' + (S.idle > 0 ? L('無料','free') : fmt(hireCost())+'G');
@@ -1012,7 +1128,8 @@ const holidayNow = () => S.flags.holidayDay === S.day && !isNight();
 const starWatch = () => S.meteorNight === S.day && isNight() && hourOf(S.time) >= 19 && hourOf(S.time) < 23.5;   // 流れ星の夜はみんなで広場から空を見る
 const moodF = () => (0.5 + S.mood/100) * (S.boostDay === S.day ? 1.4 : 1);
 const carryCap = () => 2 + S.upg.carry;
-const haulCap = () => P.haulCap + 2*S.upg.carry;
+const HAUL_CAP = [4, 6, 10, 16], HAUL_SPD = [1, 1, 1.15, 1.35];
+const haulCap = () => HAUL_CAP[S.upg.carry] ?? 16;
 const bufCap = b => 6 + 3*b.lvl;
 const staffed = d => !!(d.job || d.in || d.gen);          // 住民が働く建物
 const slots = b => (b.type === 'warehouse' || staffed(BUILD[b.type])) ? Math.min(6, b.lvl + 1) : 0;
@@ -1030,13 +1147,13 @@ const lvlCost = b => Math.round(BUILD[b.type].cost.g * 1.5 * Math.pow(1.8, b.lvl
 function price(it){
   let m = S.sat[it]; const cap = S.satCap[it]; if (cap && S.day < cap.until) m = Math.min(m, cap.v);
   const craft = (S.flags.craft && ISL.craft.includes(it) ? 1.3 : 1) * (S.flags.forest && ISL.forest.includes(it) ? 1.2 : 1) * (S.flags.jersey && ['butter','cheese','aged'].includes(it) ? 1.25 : 1);
-  return ITEMS[it].p * m * craft;
+  return ITEMS[it].p * m * craft * driveOf().sale;
 }
 function partnerAdj(i){ const d = BUILD[S.cells[i].b.type]; return !!d.partner && neigh8(i).some(j => isB(j, d.partner)); }
 function nearBonus(i){ for (let j=0;j<W*W;j++) if (j!==i && S.cells[j].t==='b' && BUILD[S.cells[j].b.type]?.near && cheb(i,j) <= 2) return true; return false; }
 function noisePairs(){ let n = 0; for (const h of allB().filter(i=>BUILD[S.cells[i].b.type]?.near)) for (const j of neigh8(h)) if (S.cells[j].t==='b' && BUILD[S.cells[j].b.type]?.ind) n++; return n; }
 function speedMult(i){
-  const b = S.cells[i].b; let m = Math.pow(1.4, b.lvl-1) * moodF();
+  const b = S.cells[i].b; let m = Math.pow(1.4, b.lvl-1) * moodF() * workF();
   if (partnerAdj(i)) m *= 1.3; if (S.flags.holstein && b.type === 'barn') m *= 1.3; if (S.flags.steam) m *= 1.35; if (S.flags.forest) m *= 0.9;
   return m;
 }
@@ -1047,6 +1164,7 @@ function moodBreakdown(){
     const v = allB(k).reduce((a,i)=>a + d.mood + (S.cells[i].b.lvl-1)*Math.ceil(d.mood/2), 0);
     if (v) Lst.push([N(d.n), Math.min(d.moodCap || 30, v)]);
   }
+  if (S.drive) Lst.push([N(driveOf().n), driveOf().mood]);
   if (S.flags.skycow) Lst.push([L('ふわふわの空牛','Fluffy sky-cows'), 6]);
   if (S.flags.sacred) Lst.push([L('聖なる岩山','Sacred rocks'), 8]);
   if (S.flags.craft) Lst.push([L('職人の誇り','Craft pride'), 4]);
@@ -1128,6 +1246,7 @@ function moveBuilding(from, to){
   b.build = P.moveTime; b.buildMax = P.moveTime;
   S.cells[to] = {t:'b', r:src.r, b};
   for (const j of oldF) if (S.cells[j].t === 'grass') setCellMesh(j);
+  for (const w of workers) if (oldF.includes(w.at)) w.at = undefined;
   for (const w of workers) if (w.bi === from){ release(w); w.bi = to; w.tasks = []; w.under = false; }
   delete haulRes[from];
   setCellMesh(from); setCellMesh(to); CM[to].userData.pop = 0.35;
@@ -1135,13 +1254,37 @@ function moveBuilding(from, to){
   toast(L('移動中…（'+P.moveTime+'秒ほどで再開）', 'Moving… (back to work in ~'+P.moveTime+'s)'));
   return true;
 }
+// 解体：すばやく崩れて土ぼこりと破片が飛ぶ
+const razes = [], RAZE_T = 0.45;
+function razeFx(i){
+  const g = CM[i]; if (!g) return;
+  CM[i] = null;                                  // setCellMesh に消されないように預かる
+  if (g.userData.scaffold) g.userData.scaffold.visible = true;
+  if (g.userData.pile) g.userData.pile.visible = false;
+  const p = g.position, big = bSize(i) > 1;
+  razes.push({g, x:p.x, t:0, s:g.scale.x});
+  burst(p.x, 0.5, p.z, 'log', big ? 12 : 7); burst(p.x, 0.3, p.z, 'stone', big ? 12 : 7);
+  for (let k=0; k<(big?9:5); k++) puff(p.x + rnd(-.35,.35), 0.15, p.z + rnd(-.35,.35));
+  sfx('build'); shake(0.08);
+}
+function updateRaze(dt){
+  for (let k = razes.length-1; k >= 0; k--){
+    const R = razes[k]; R.t += dt; const f = R.t / RAZE_T;
+    if (f >= 1){ scene.remove(R.g); razes.splice(k, 1); continue; }
+    R.g.scale.set(R.s*(1 + f*0.2), R.s*Math.max(0.02, 1 - f*f), R.s*(1 + f*0.2));
+    R.g.position.x = R.x + Math.sin(R.t*70)*0.04; R.g.rotation.z = Math.sin(R.t*38)*0.1*f;
+  }
+}
 function demolish(i){
   const b = S.cells[i].b; if (!b || b.type === 'warehouse') return;
   while (b.workers > 0) removeWorker(i);
   S.gold += Math.round(BUILD[b.type].cost.g * 0.4);
   if (BUILD[b.type].in) S.items[BUILD[b.type].in] += b.inb;
   for (const k in b.st || {}) S.items[k] += Math.floor(b.st[k]);
-  for (const j of footCells(i, bSize(i))){ S.cells[j] = {t:'grass', r:Math.random()}; setCellMesh(j); }
+  const foot = footCells(i, bSize(i));
+  razeFx(i);
+  for (const w of workers) if (foot.includes(w.at)) w.at = undefined;
+  for (const j of foot){ S.cells[j] = {t:'grass', r:Math.random()}; setCellMesh(j); }
   assignLights(); select(-1);
 }
 function hire(i){
@@ -1172,7 +1315,7 @@ function addWorker(bi){
   const b = S.cells[bi].b; b.workers++;
   const job = b.type === 'warehouse' ? 'haul' : (BUILD[b.type].job || 'proc');
   const p = wpos(WH);
-  const w = {bi, job, x:p.x + rnd(-.2,.2), z:p.z - 0.5, tasks:[], carry:null, n:0, sleep:false, under:false, t:0, ox:rnd(-.22,.22), mesh:makeWorkerMesh(job), face:0, walk:0, work:false, dance:0};
+  const w = {bi, job, x:p.x + rnd(-.2,.2), z:p.z - 0.5, tasks:[], carry:null, n:0, sleep:false, under:false, at:WH, t:0, ox:rnd(-.22,.22), mesh:makeWorkerMesh(job), face:0, walk:0, work:false, dance:0};
   w.mesh.position.set(w.x, 0, w.z); scene.add(w.mesh); workers.push(w); assignHomes();
 }
 function release(w){ for (const m of [reserved, haulRes]) for (const k in m) if (m[k] === w) delete m[k]; }
@@ -1184,6 +1327,7 @@ function removeWorker(bi){
 }
 const whPt = w => ({x: wpos(WH).x + w.ox, z: wpos(WH).z - 0.5});
 const bPt = (i, w) => { const p = bCenter(i), k = bSize(i); return {x:p.x + w.ox, z: Math.min(W/2 - 0.15, p.z + 0.42*k)}; };
+const goB = (i, w) => ({k:'go', ...bPt(i, w), at:i}), goWH = w => ({k:'go', ...whPt(w), at:WH});
 const PLAZA = {x: wpos(WH).x, z: wpos(WH).z - 1.7};
 // 住まい：職場に近い家から順に、空きのある家へ（あふれた人は市場で寝る）
 function assignHomes(){
@@ -1224,8 +1368,8 @@ function plan(w){
   if (festActive()){ const a = Math.random()*Math.PI*2, r = 0.5 + Math.random()*0.4; return [...upIf(w), {k:'go', x:PLAZA.x + Math.cos(a)*r, z:PLAZA.z + Math.sin(a)*r}, {k:'dance', d:rnd(3,6)}]; }
   if (starWatch()){ const a = Math.random()*Math.PI*2, r = 0.6 + Math.random()*0.9; return [...upIf(w), {k:'go', x:PLAZA.x + Math.cos(a)*r, z:PLAZA.z + Math.sin(a)*r}, {k:'dance', d:rnd(5,9), calm:true, star:true}]; }
   if (holidayNow()){ const land = S.cells.map((c,i)=>c.t==='void'||c.t==='b'||c.t==='occ'?-1:i).filter(i=>i>=0), p = wpos(land[Math.floor(Math.random()*land.length)]); return [...upIf(w), {k:'go', x:p.x + rnd(-.3,.3), z:p.z + rnd(-.3,.3)}, {k:'dance', d:rnd(2,4), calm:true}]; }
-  if (offDuty(w)) return [...upIf(w), {k:'go', ...homePt(w), home:true}, {k:'sleep'}];
-  if (b.broken || b.build > 0) return [...upIf(w), {k:'go', ...bPt(w.bi,w)}, {k:'wait', d:1.5, in:b.build <= 0}];
+  if (offDuty(w)) return [...upIf(w), {k:'go', ...homePt(w), at:homeOf(w), home:true}, {k:'sleep'}];
+  if (b.broken || b.build > 0) return [...upIf(w), goB(w.bi, w), {k:'wait', d:1.5, in:b.build <= 0}];
   if (w.job === 'haul') return planHaul(w);
   if (w.job === 'chop'){
     if (S.day < S.flags.protectUntil || stTotal(b) >= stCap(b)) return idleAt(w, 2);
@@ -1233,26 +1377,26 @@ function plan(w){
     if (tgt < 0) return idleAt(w, 2);
     reserved[tgt] = w;
     const tp = wpos(tgt), dx = w.x - tp.x, dz = w.z - tp.z, Ln = Math.hypot(dx,dz) || 1;
-    return [{k:'go', x:tp.x + dx/Ln*0.32, z:tp.z + dz/Ln*0.32}, {k:'work', cell:tgt, kind:'tree'}, {k:'go', ...bPt(w.bi,w)}, {k:'store'}];
+    return [{k:'go', x:tp.x + dx/Ln*0.32, z:tp.z + dz/Ln*0.32, at:tgt}, {k:'work', cell:tgt, kind:'tree'}, goB(w.bi, w), {k:'store'}];
   }
   if (w.job === 'quarry'){
     if (stTotal(b) >= stCap(b)) return [...upIf(w), ...idleAt(w, 2)];
-    if (canDig()) return [...(w.under ? [] : [{k:'go', ...bPt(w.bi,w)}, {k:'down'}]), {k:'dig', t:0}];
+    if (canDig()) return [...(w.under ? [] : [goB(w.bi, w), {k:'down'}]), {k:'dig', t:0}];
     const tgt = findNearest('rock', w.bi);
     if (tgt < 0) return [...upIf(w), ...idleAt(w, 3)];
     reserved[tgt] = w;
     const tp = wpos(tgt), dx = w.x - tp.x, dz = w.z - tp.z, Ln = Math.hypot(dx,dz) || 1;
-    return [...upIf(w), {k:'go', x:tp.x + dx/Ln*0.34, z:tp.z + dz/Ln*0.34}, {k:'work', cell:tgt, kind:'rock'}, {k:'go', ...bPt(w.bi,w)}, {k:'store'}];
+    return [...upIf(w), {k:'go', x:tp.x + dx/Ln*0.34, z:tp.z + dz/Ln*0.34, at:tgt}, {k:'work', cell:tgt, kind:'rock'}, goB(w.bi, w), {k:'store'}];
   }
-  const door = bPt(w.bi, w), op = [{k:'go', ...door}, {k:'op', d:2}];
+  const door = goB(w.bi, w), op = [door, {k:'op', d:2}];
   // ふだんは中で働き、たまに荷物を抱えて外へ用事に出る（用事中も働いている扱い）
   if (Math.random() >= 0.14) return op;
   const out = BUILD[b.type].out || BUILD[b.type].gen;
-  return [...op, {k:'go', ...outPt(w), shift:true, show:out}, {k:'wait', d:rnd(0.8,1.8), shift:true}, {k:'go', ...door, shift:true}];
+  return [...op, {k:'go', ...outPt(w), shift:true, show:out}, {k:'wait', d:rnd(0.8,1.8), shift:true}, {...goB(w.bi, w), shift:true}];
 }
 // 手が空いた人は建物の中で待つ。たまに近所を歩く
 function idleAt(w, d){
-  const home = w.job === 'haul' ? whPt(w) : bPt(w.bi, w), r = [{k:'go', ...home}, {k:'wait', d, in:true}];
+  const r = [w.job === 'haul' ? goWH(w) : goB(w.bi, w), {k:'wait', d, in:true}];
   return Math.random() < 0.18 ? [...r, {k:'go', ...outPt(w)}, {k:'wait', d:rnd(0.8,1.8)}] : r;
 }
 // ちょっとした用事の行き先：となりの空きマスか、近所の建物の戸口
@@ -1287,16 +1431,16 @@ function planHaul(w){
   if (!best) return idleAt(w, 1);
   haulRes[best.i] = w;
   if (best.kind === 'pick'){
-    if (best.to === WH) return [{k:'go', ...bPt(best.i, w)}, {k:'take', i:best.i, it:best.it}, {k:'rel'}, {k:'go', ...whPt(w)}, {k:'dep'}];
-    return [{k:'go', ...bPt(best.i, w)}, {k:'take', i:best.i, it:best.it, room:best.to}, {k:'rel'}, {k:'go', ...bPt(best.to, w)}, {k:'putIn', i:best.to}];
+    if (best.to === WH) return [goB(best.i, w), {k:'take', i:best.i, it:best.it}, {k:'rel'}, goWH(w), {k:'dep'}];
+    return [goB(best.i, w), {k:'take', i:best.i, it:best.it, room:best.to}, {k:'rel'}, goB(best.to, w), {k:'putIn', i:best.to}];
   }
-  return [{k:'go', ...whPt(w)}, {k:'takeIn', i:best.i}, {k:'go', ...bPt(best.i, w)}, {k:'putIn', i:best.i}, {k:'rel'}];
+  return [goWH(w), {k:'takeIn', i:best.i}, goB(best.i, w), {k:'putIn', i:best.i}, {k:'rel'}];
 }
 // 持ち場から遠いほど急に遅くなる（遠い木・遠い建物は極端に非効率）
 function farPenalty(w){ const d = cheb(cellAt(w.x, w.z), w.bi); return d > P.farFrom ? 1 / (1 + P.farK * (d - P.farFrom) ** 2) : 1; }
 function walkSpeed(w, t){
   const paved = S.upg.road && t && t.key && S.routes[t.key] > 0.45;
-  return P.walk * moodF() * (nearBonus(w.bi) ? 1.25 : 1) * (paved ? 1 + 0.25*S.upg.road : 1) * farPenalty(w);
+  return P.walk * moodF() * (1 + (driveOf().work - 1)*0.4) * lampNight() * (w.job === 'haul' ? HAUL_SPD[S.upg.carry] ?? 1 : 1) * (nearBonus(w.bi) ? 1.25 : 1) * (paved ? 1 + 0.25*S.upg.road : 1) * farPenalty(w);
 }
 function updateWorker(w, dt){
   w.work = false; w.dance = 0;
@@ -1304,29 +1448,45 @@ function updateWorker(w, dt){
   if (!w.tasks.length) w.tasks = plan(w);
   const t = w.tasks[0]; if (!t) return;
   // 帰る時間になったら、手ぶらなら作業を切り上げて家へ
-  if (!t.home && t.k !== 'sleep' && t.k !== 'dance' && !w.carry && offDuty(w) && !festActive() && !holidayNow() && !starWatch()){ release(w); w.tasks = []; return; }
+  if (!t.home && t.k !== 'sleep' && t.k !== 'dance' && !w.carry && offDuty(w) && !festActive() && !holidayNow() && !starWatch()){ if (t.k === 'go') w.at = undefined; release(w); w.tasks = []; return; }
   const cb = S.cells[w.bi]; if (cb.t !== 'b'){ w.tasks = []; return; }
   const b = cb.b;
   // 建物の中にいるか（go は実際に歩きだしたときに外へ出る。その場への go で一瞬だけ見えることがないように）
   if (t.k !== 'go') w.inside = t.k === 'op' || (t.k === 'wait' && !!t.in);
   switch (t.k){
     case 'go': {
-      if (t.key === undefined){ t.key = routeKey(w.x, w.z, t.x, t.z); t.len = Math.hypot(t.x - w.x, t.z - w.z); }
+      if (!t.begun){
+        // 道は「入口から入口へ」の1本だけ。かたまりの中は建物づたいに歩く
+        t.begun = true;
+        if (w.at !== undefined && t.at !== undefined){
+          const A = entryOf(w.at), B = entryOf(t.at);
+          if (A !== B){
+            const a = nodePt(A), c = nodePt(B), key = routeKey(a.x, a.z, c.x, c.z), len = Math.hypot(a.x - c.x, a.z - c.z), legs = [];
+            if (w.at !== A) legs.push({...t, x:a.x, z:a.z, at:A});
+            // 建物どうしの道はすぐ付く。木や岩への道は通い詰めたときだけ
+            const wm = [A, B].some(n => ['tree','rock'].includes(S.cells[n].t)) ? 0.8 : 2;
+            if (t.at === B) legs.push({...t, key, len, wm});
+            else legs.push({...t, x:c.x, z:c.z, at:B, key, len, wm}, {...t});
+            w.tasks.splice(0, 1, ...legs);
+            break;
+          }
+        }
+      }
       const dx = t.x - w.x, dz = t.z - w.z, Ln = Math.hypot(dx, dz), st = walkSpeed(w, t)*dt;
-      if (Ln <= st){ w.x = t.x; w.z = t.z; w.tasks.shift(); }
-      else { w.inside = false; w.x += dx/Ln*st; w.z += dz/Ln*st; w.face = Math.atan2(dx, dz); w.walk += dt*14; if (t.key) wearRoute(t.key, t.len, dt); }
+      if (Ln <= st){ w.x = t.x; w.z = t.z; w.at = t.at; w.tasks.shift(); }
+      else { w.inside = false; w.x += dx/Ln*st; w.z += dz/Ln*st; w.face = Math.atan2(dx, dz); w.walk += dt*14; if (t.key) wearRoute(t.key, t.len, dt*(t.wm || 1)); }
       break; }
     case 'wait': t.d -= dt; if (t.d <= 0) w.tasks.shift(); break;
     case 'op': t.d -= dt; w.work = true; w.t += dt; if (t.d <= 0) w.tasks.shift(); break;
     case 'dance': t.d -= dt; w.dance = t.calm ? 1 : 2; if (Math.random() < dt*0.25) popAt(w.x, 0.7, w.z, t.star ? '☆' : '♪'); if (t.d <= 0) w.tasks.shift(); break;
     case 'sleep': w.sleep = true; w.mesh.visible = false; w.tasks = []; break;
     case 'down': w.under = true; w.tasks.shift(); break;
-    case 'up': { w.under = false; const p = bPt(w.bi, w); w.x = p.x; w.z = p.z; w.tasks.shift(); break; }
+    case 'up': { w.under = false; w.at = w.bi; const p = bPt(w.bi, w); w.x = p.x; w.z = p.z; w.tasks.shift(); break; }
     case 'work': {
       const c = S.cells[t.cell];
       if (c.t !== t.kind || (t.kind === 'tree' && S.day < S.flags.protectUntil)){ delete reserved[t.cell]; if (w.n > 0) w.tasks.shift(); else w.tasks = []; break; }
       const tp = wpos(t.cell); w.face = Math.atan2(tp.x - w.x, tp.z - w.z); w.work = true;
-      w.t += dt * moodF() * (1 + 0.25*S.upg.axe) * (1 + 0.2*(b.lvl-1));
+      w.t += dt * moodF() * workF() * (1 + 0.25*S.upg.axe) * (1 + 0.2*(b.lvl-1));
       if (w.t >= (t.kind === 'tree' ? P.chopTime : P.quarryTime)){
         w.t = 0; c.hp--;
         if (t.kind === 'tree'){ w.carry = ISL.tree; w.n += c.gold ? 3 : 1; if (CM[t.cell]) CM[t.cell].userData.hit = 0.18; fellCheck(t.cell); }
@@ -1336,7 +1496,7 @@ function updateWorker(w, dt){
       break; }
     case 'dig': {
       if (!canDig()){ w.tasks.shift(); break; }
-      w.work = true; t.t += dt * moodF() * (1 + 0.25*S.upg.axe) * (1 + 0.2*(b.lvl-1));
+      w.work = true; t.t += dt * moodF() * workF() * (1 + 0.25*S.upg.axe) * (1 + 0.2*(b.lvl-1));
       if (t.t >= P.digTime){
         const n = Math.min(1, S.res.ore);
         S.res.ore -= n; stAdd(b, 'ore', n); S.stats.made.ore += n; S.seen.ore = true;
@@ -1367,7 +1527,7 @@ function updateWorker(w, dt){
     case 'putIn': {
       const c = S.cells[t.i];
       if (w.carry && c.t === 'b' && BUILD[c.b.type].in === w.carry){ const room = bufCap(c.b) - c.b.inb, n = Math.min(room, w.n); c.b.inb += n; w.n -= n; if (!w.n) w.carry = null; }
-      if (w.carry){ w.tasks = [{k:'go', ...whPt(w)}, {k:'dep'}]; break; }   // 入りきらなかった分は市場へ
+      if (w.carry){ w.tasks = [goWH(w), {k:'dep'}]; break; }   // 入りきらなかった分は市場へ
       w.tasks.shift(); break; }
     case 'dep':
       if (w.carry){ S.items[w.carry] += w.n; S.seen[w.carry] = true; }
@@ -1469,6 +1629,16 @@ function onDawn(){
     if (gift){ S.gold += gift; eventQueue.push({result:true, img:'meteor_wish', title:L('願いがかなった！','A wish came true!'), text:L('朝、広場に光る「流れ星のかけら」が落ちていた。<b>+'+fmt(gift)+'G・幸福 +12</b>','A glowing star shard lay in the square at dawn. <b>+'+fmt(gift)+'G, happiness +12</b>')}); }
     else eventQueue.push({result:true, img:'meteor', title:L('星降る夜のあとで','After the starry night'), text:L('願いはひみつ。でも、みんな晴れやかな顔をしている。<b>幸福 +12</b>','The wishes are secret, but everyone looks happy. <b>Happiness +12</b>')});
   }
+  if (S.drive){
+    S.stats.driveDays = (S.stats.driveDays || 0) + S.drive;
+    const c = allB().filter(i => BUILD[S.cells[i].b.type].ind && !S.cells[i].b.broken && S.cells[i].b.workers);
+    if (S.drive === 3 && c.length && Math.random() < 0.15){
+      const i = c[Math.floor(Math.random()*c.length)], nm = BUILD[S.cells[i].b.type].n;
+      S.cells[i].b.broken = true; if (CM[i]) CM[i].rotation.z = 0.12;
+      eventQueue.push({result:true, img:'storm_lose', title:L('働かせすぎて故障！','Worked to breaking point!'), text:L('休みなく回し続けた'+nm[0]+'が壊れた。修理するまで止まる。','The '+nm[1]+' broke down from overwork. It stops until repaired.')});
+      story(nm[0]+'を働かせすぎて壊した', 'Overworked the '+nm[1]+' until it broke');
+    }
+  }
   const NO = S.nightOrder;
   if (NO && S.day > NO.day){
     S.nightShift = NO.prev; S.nightOrder = null;
@@ -1489,7 +1659,7 @@ function sim(dt){
   wearAcc += dt; if (wearAcc >= 2){ wearAcc = 0; decayRoutes(); wearSocial(); }
   for (const k of ITEM_KEYS) S.sat[k] += (1 - S.sat[k]) * (S.sat[k] < 1 ? P.satRecover : 0.004) * dt;
   regrowAcc += dt;
-  const regMul = (S.flags.skycow ? 1.5 : 1) * (S.flags.steam ? 0.5 : 1) * (S.flags.forest ? 2 : 1) * (S.day < S.flags.protectUntil ? 3 : 1) * (S.rainDay === S.day ? 3 : 1);
+  const regMul = (S.drive === 3 ? 0.5 : 1) * (S.flags.skycow ? 1.5 : 1) * (S.flags.steam ? 0.5 : 1) * (S.flags.forest ? 2 : 1) * (S.day < S.flags.protectUntil ? 3 : 1) * (S.rainDay === S.day ? 3 : 1);
   for (let i=0;i<W*W;i++){
     const c = S.cells[i];
     if (c.t === 'sapling'){ c.g += dt / ISL.sapT * (S.flags.forest ? 1.5 : 1); if (c.g >= 1){ S.cells[i] = {t:'tree', hp:P.treeHP, r:c.r}; setCellMesh(i); CM[i].userData.pop = 0.3; } }
@@ -1566,7 +1736,13 @@ function onBalloonDock(){
   for (const k of ITEM_KEYS) if (S.auto[k] && S.items[k] >= 1 && !S.contracts.some(c=>c.it===k)) earn += sell(k, S.items[k], true);
   if (earn){ popAt(wpos(WH).x, 1.6, wpos(WH).z + 1, '+'+fmt(earn)+'G', 'g'); coinBurst(6); sfx('coin'); }
 }
-function sprout(i){ S.cells[i] = {t:'sapling', g:0, r:Math.random()}; setCellMesh(i); }
+function plannedCells(){
+  if (!mode) return [];
+  const at = TOUCH ? pending : hoverCell; if (at < 0) return [];
+  const sz = mode.kind === 'build' ? BUILD[mode.type].size || 1 : bSize(mode.from);
+  return cx(at) + sz <= W && cz(at) + sz <= W ? footCells(at, sz) : [];
+}
+function sprout(i){ if (plannedCells().includes(i)) return; S.cells[i] = {t:'sapling', g:0, r:Math.random()}; setCellMesh(i); }
 
 /* =========================================================
    毎朝の相談ごと（正解のないジレンマ）
@@ -1867,7 +2043,7 @@ function evaluate(){
     craft:   Math.min(40, made(ISL.axCraft)) + (S.flags.craft?30:0),
     merchant:st.contractsDone*12 + st.loans*8 + Math.min(20, st.earned/5000),
     happy:   Math.max(0, avg-50)*1.5 + st.festivals*8 + st.holidays*8 + Math.min(10, st.pets*0.5),
-    grind:   st.nightShifts*7 + (st.nightShifts ? Math.max(0, 45-avg)*0.6 : 0) + st.quits*6,
+    grind:   (st.driveDays || 0)*3 + st.nightShifts*7 + (st.nightShifts ? Math.max(0, 45-avg)*0.6 : 0) + st.quits*6,
   };
   const sorted = Object.entries(ax).sort((a,b)=>b[1]-a[1]), T = TITLES[ISLAND];
   return {main:T[sorted[0][0]], sub:T[sorted[1][0]], ax, avg};
@@ -2004,22 +2180,53 @@ function updateTourists(dt){
   if (ph.st === 'docked' && !ph.board && S.tourDay === S.day && tourSpawnDay !== S.day && S.day !== S.airFirst){
     tourSpawnDay = S.day;
     const n = Math.min(10, S.tourN || 3);
-    for (let k=0;k<n;k++){ const m = makeWorkerMesh('tour'); m.visible = false; scene.add(m); tourists.push({m, x:pad.x + rnd(-.3,.3), z:pad.z + rnd(-.3,.3), path:[gate], wait:k*1.2, back:false, ph:Math.random()*6}); }
+    for (let k=0;k<n;k++){ const m = makeWorkerMesh('tour'); m.visible = false; scene.add(m); tourists.push({m, x:pad.x + rnd(-.3,.3), z:pad.z + rnd(-.3,.3), from:pad, path:[gate], wait:k*1.2, back:false, ph:Math.random()*6}); }
   }
   for (let q = tourists.length-1; q >= 0; q--){
     const T = tourists[q], u = T.m.userData;
     if (T.wait > 0){ T.wait -= dt; continue; }
     T.m.visible = true;
-    if (ph.board && !T.back){ T.back = true; T.path = [gate, pad]; T.key = undefined; }
+    if (ph.board && !T.back){ if (T.path.length) T.from = null; T.back = true; T.path = [gate, pad]; T.key = undefined; }
     const tg = T.path[0];
     let mv = false;
     if (tg){
-      if (T.key === undefined){ T.key = routeKey(T.x, T.z, tg.x, tg.z); T.len = Math.hypot(tg.x - T.x, tg.z - T.z); }
+      if (T.key === undefined){ const a = T.from, c = tg.node || tg; T.key = a ? routeKey(a.x, a.z, c.x, c.z) : null; T.len = a ? Math.hypot(c.x - a.x, c.z - a.z) : 1; }
       const dx = tg.x - T.x, dz = tg.z - T.z, Ln = Math.hypot(dx, dz), st = 0.8*dt;
-      if (Ln <= st){ T.x = tg.x; T.z = tg.z; T.path.shift(); T.key = undefined; if (!T.path.length) T.wait = T.back ? 0 : rnd(3, 7); }
+      if (Ln <= st){ T.x = tg.x; T.z = tg.z; T.from = tg.node || tg; T.path.shift(); T.key = undefined; if (!T.path.length) T.wait = T.back ? 0 : rnd(3, 7); }
       else { T.x += dx/Ln*st; T.z += dz/Ln*st; T.m.rotation.y = Math.atan2(dx, dz); T.ph += dt*14; mv = true; if (T.key) wearRoute(T.key, T.len, dt*0.6); }
     } else if (T.back){ scene.remove(T.m); tourists.splice(q, 1); continue; }
-    else { const sp = tourSpots(), p = sp[Math.floor(Math.random()*sp.length)]; T.path = [{x:p.x + rnd(-.35,.35), z:p.z + rnd(-.35,.35)}]; }
+    else { const sp = tourSpots(), p = sp[Math.floor(Math.random()*sp.length)]; T.path = [{x:p.x + rnd(-.35,.35), z:p.z + rnd(-.35,.35), node:p}]; }
+    const bob = mv ? Math.abs(Math.sin(T.ph))*0.035 : 0;
+    u.body.position.y = 0.13 + bob; u.head.position.y = 0.27 + bob; u.hat.position.y = 0.35 + bob;
+    u.legL.position.z = mv ? Math.sin(T.ph)*0.035 : 0; u.legR.position.z = -u.legL.position.z;
+    T.m.position.set(T.x, 0, T.z);
+  }
+}
+// 散歩する人：同じ種類の建物をつなぐ道を、用もなく行き来する（家どうしは夜に提灯を持って、ほかは昼）
+const strollers = []; let strollT = 0;
+function updateStrollers(dt){
+  if (!dt) return;
+  const h = hourOf(S.time), night = h >= 18.5 && h < 24.5, day = h >= 7 && h < 17.5;
+  const es = night || day ? socialEdges.filter(e => e.night === night && e.len >= 1.45) : [];
+  const want = workerCount() ? Math.min(6, Math.ceil(es.length*0.8), workerCount()) : 0;
+  strollT -= dt;
+  if (strollers.length < want && strollT <= 0){
+    strollT = 0.9;
+    const e = es[Math.floor(Math.random()*es.length)], [a, b] = Math.random() < 0.5 ? [e.p, e.q] : [e.q, e.p];
+    const m = makeWorkerMesh('tour'), u = m.userData;
+    if (night){ u.carry.material = lampMat(0xffd070); u.carry.scale.set(0.09,0.11,0.09); u.carry.position.set(0.12,0.14,0.05); u.carry.visible = true; }
+    scene.add(m); strollers.push({m, x:a.x, z:a.z, path:[b, a], wait:0, ph:Math.random()*6, night, sp:rnd(0.6,0.85)});
+  }
+  for (let k = strollers.length-1; k >= 0; k--){
+    const T = strollers[k], u = T.m.userData, tg = T.path[0];
+    if (!tg || (T.night ? !night : !day)){ scene.remove(T.m); strollers.splice(k, 1); continue; }
+    let mv = false;
+    if (T.wait > 0) T.wait -= dt;
+    else {
+      const dx = tg.x - T.x, dz = tg.z - T.z, Ln = Math.hypot(dx, dz), st = T.sp*dt;
+      if (Ln <= st){ T.x = tg.x; T.z = tg.z; T.path.shift(); T.wait = rnd(1, 3); }
+      else { T.x += dx/Ln*st; T.z += dz/Ln*st; T.m.rotation.y = Math.atan2(dx, dz); T.ph += dt*13; mv = true; }
+    }
     const bob = mv ? Math.abs(Math.sin(T.ph))*0.035 : 0;
     u.body.position.y = 0.13 + bob; u.head.position.y = 0.27 + bob; u.hat.position.y = 0.35 + bob;
     u.legL.position.z = mv ? Math.sin(T.ph)*0.035 : 0; u.legR.position.z = -u.legL.position.z;
@@ -2169,6 +2376,7 @@ function musicTick(){
    ========================================================= */
 const SKY = {day:[new THREE.Color(0x5fb4f0),new THREE.Color(0xd2f0ff)], dusk:[new THREE.Color(0x5a4a9a),new THREE.Color(0xffa070)], night:[new THREE.Color(0x070a24),new THREE.Color(0x1c2350)]};
 const _c1 = new THREE.Color(), _c2 = new THREE.Color();
+const HAZE_C = new THREE.Color(0x7a6a5c);
 let nightAmt = 0;
 // 夜の明かり：どの建物も「窓の灯り＋足もとの光だまり」で同じように光る。色と大きさ、ランタンの形で個性を出す。
 // 点光源（8個）は種類ではなく島全体にばらけるように配る（隅の家だけ暗い、ということがないように）
@@ -2180,6 +2388,7 @@ const LSTYLE = {
   bakery:{c:0xff9a50, r:1.15}, park:{c:0xffe8b0, r:1.6}, bath:{c:0xff7a5a, r:1.15}, fun:{c:0xffb0e8, r:1.7},
 };
 function assignLights(){
+  regroup();
   const cand = allB();
   const m4 = new THREE.Matrix4(), col = new THREE.Color(); let ng = 0;
   for (const i of cand){
@@ -2220,6 +2429,7 @@ function updateDayNight(t){
   hemi.color.set(0xbfe3ff).lerp(_c1.set(0x3a4a90), nightAmt);
   _c1.copy(SKY.day[0]).lerp(SKY.night[0], nightAmt).lerp(SKY.dusk[0], Math.max(0,duskAmt)*0.7);
   _c2.copy(SKY.day[1]).lerp(SKY.night[1], nightAmt).lerp(SKY.dusk[1], Math.max(0,duskAmt)*0.85);
+  if (S.drive === 3){ const haze = 0.36*(1 - nightAmt); _c1.lerp(HAZE_C, haze); _c2.lerp(HAZE_C, haze); }
   postMat.uniforms.skyTop.value.copy(_c1); postMat.uniforms.skyBot.value.copy(_c2);
   postMat.uniforms.night.value = nightAmt; postMat.uniforms.time.value = t; postMat.uniforms.yaw.value = camS.yaw;
   // 流れ星：ふだんはまれに1つ。「流れ星の夜」は空いっぱいに、長く明るく何本も流れる
@@ -2229,7 +2439,7 @@ function updateDayNight(t){
     if (mt.w < 1){ mt.w += 1/60 * (shower ? 1.1 : 1.4); continue; }
     if (nightAmt > 0.4 && Math.random() < (shower ? 0.03 : 0.00025)) mt.set(rnd(0.1,0.95), rnd(0.6,0.98), Math.PI + rnd(0.3,0.8), 0);
   }
-  winMat.emissiveIntensity = nightAmt * 1.6; glowMat.opacity = nightAmt * 0.32;
+  winMat.emissiveIntensity = nightAmt * 1.6; glowMat.opacity = nightAmt * 0.62;
   for (const m of lampMats) m.color.copy(m.userData.base).multiplyScalar(0.32 + 0.68*nightAmt);
   fireMat.emissiveIntensity = 0.6 + nightAmt*1.2 + Math.sin(t*9)*0.15;
   for (const Lp of lightPool) Lp.l.intensity = Lp.cell < 0 ? 0 : nightAmt * (Lp.fire ? 2.2 + Math.sin(t*11)*0.4 : 1.4);
@@ -2295,7 +2505,11 @@ const groundPlane = new THREE.Plane(new THREE.Vector3(0,1,0), 0), _gp = new THRE
 function pick(){
   mouse.set(mx/innerWidth*2-1, -(my/innerHeight)*2+1);
   raycaster.setFromCamera(mouse, cam);
-  if (!mode){
+  if (mode){
+    // 木や若木は、上の方を押してもその木のマスを選ぶ（1つ奥のマスにずれない）
+    const h = raycaster.intersectObjects(pickables, true)[0];
+    if (h){ let o = h.object; while (o && o.userData.cell === undefined) o = o.parent; if (o && ['tree','sapling'].includes(S.cells[o.userData.cell].t)) return o.userData.cell; }
+  } else {
     for (const h of raycaster.intersectObjects(pickables, true)){
       let o = h.object; while (o && o.userData.cell === undefined) o = o.parent;
       if (o) return o.userData.cell;
@@ -2340,7 +2554,9 @@ function startMode(m){
 function placementInfo(i){
   const type = mode.kind === 'build' ? mode.type : S.cells[mode.from].b.type, d = BUILD[type], Lst = [];
   const why = modeWhy(i); if (why) Lst.push('<span class="r">× '+why+'</span>');
-  if (S.cells[i].t === 'tree') Lst.push(ISL.tree === 'log' ? L('木を伐って建てる','The tree will be cut') : L('牧草を刈って建てる','The grass will be cut'));
+  const planned = footCells(i, mode.kind === 'build' ? d.size || 1 : bSize(mode.from)).filter(j => j < W*W).map(j => S.cells[j].t);
+  if (planned.includes('sapling')) Lst.push('<span class="g">'+(ISL.tree === 'log' ? L('若木は抜いて建てられる（丸太は増えない）','Saplings are simply cleared (no logs)') : L('芽は抜いて建てられる（干し草は増えない）','Sprouts are simply cleared (no hay)'))+'</span>');
+  if (planned.includes('tree')) Lst.push(ISL.tree === 'log' ? L('木を伐って建てる','The tree will be cut') : L('牧草を刈って建てる','The grass will be cut'));
   if (d.partner && neigh8(i).some(j=>isB(j, d.partner))) Lst.push('<span class="g">'+L('隣接ボーナス：速い','Neighbor bonus: faster')+'</span>');
   if (d.ind && neigh8(i).some(j=>S.cells[j].t==='b' && BUILD[S.cells[j].b.type]?.near)) Lst.push('<span class="r">'+L('隣の家がうるさがる','Noisy for the neighbors')+'</span>');
   if (d.near && neigh8(i).some(j=>S.cells[j].t==='b' && BUILD[S.cells[j].b.type]?.ind)) Lst.push('<span class="r">'+L('工場の隣はうるさい','Factory next door is noisy')+'</span>');
@@ -2368,6 +2584,53 @@ function neighborHTML(){
   return '<div class="row"><span class="grow">'+nm+'<br><small>'+note+'</small></span><button class="btn hot w" data-act="travelMenu:'+to+'" '+(canTravel(to)?'':'disabled')+'>'+(been ? L('行く','Go') : L('渡る','Travel'))+'</button></div>' +
     '<div class="kv" style="color:var(--sub)">'+L('農耕の島（風車と畑）……準備中','Farm Island (windmill and fields)… coming soon')+'</div>';
 }
+function driveHTML(){
+  if (S.tut >= 0) return '';
+  const cur = S.drive || 0, locked = S.driveDay === S.day;
+  return '<h4 style="color:var(--hi);font-weight:normal;margin:12px 0 4px">'+L('もうけ第一：幸福と引きかえ','Profit first: paid in happiness')+'</h4>' +
+    '<div class="kv" style="color:var(--sub);margin-bottom:6px">'+(locked ? L('今日はもう変えた。明日また変えられる','Already changed today. Try again tomorrow') : L('1日1回変えられる。きつくすると幸福はすぐ下がり、ゆるめても少しずつしか戻らない。幸福が20を切ると住民が島を去る','Change once a day. Pushing harder lowers happiness at once; easing off recovers it slowly. Below 20, residents leave'))+'</div><div class="grid">' +
+    DRIVE.map((D, k) => '<button class="opt" data-act="drive:'+k+'" '+(k === cur || locked ? 'disabled' : '')+'><div class="n">'+(k === cur ? '● ' : '')+N(D.n)+'</div><div class="d">'+N(D.d)+'</div></button>').join('') + '</div>';
+}
+function setDrive(k){
+  const cur = S.drive || 0;
+  if (k === cur || !DRIVE[k] || S.driveDay === S.day || S.tut >= 0) return;
+  if (DRIVE[k].mood < DRIVE[cur].mood) addMood(DRIVE[k].mood - DRIVE[cur].mood);
+  S.drive = k; S.driveDay = S.day;
+  toast(L('働き方：','Work style: ')+N(DRIVE[k].n), k > cur ? 'bad' : 'good');
+  story('働き方を「'+DRIVE[k].n[0]+'」に変えた', 'Switched to “'+DRIVE[k].n[1]+'”');
+  sfx(k > cur ? 'event' : 'hire');
+}
+// 働き方は市場の屋根に現れる：掲示板 → 鐘 → 金の豚
+const driveG = new THREE.Group(); scene.add(driveG);
+let driveShown = 0, driveBell = null;
+function updateDrive(){
+  const lv = S.drive || 0;
+  if (driveShown !== lv){
+    driveShown = lv; driveG.clear(); driveBell = null;
+    const g = driveG, p = wpos(WH); g.position.set(p.x, 0.6, p.z);
+    if (lv === 1){
+      for (const x of [-0.17,0.17]) g.add(part(G.box, 0x5a3a20, 0.03,0.3,0.03, x,0.1,0));
+      g.add(part(G.box, 0xf4f0e0, 0.46,0.3,0.03, 0,0.32,0));
+      for (const z of [-0.025,0.025]) for (let k=0;k<3;k++) g.add(part(G.box, 0xd83a2a, 0.07,0.07+k*0.07,0.02, -0.12+k*0.12,0.24+k*0.035,z));
+    } else if (lv === 2){
+      for (const x of [-0.19,0.19]) g.add(part(G.box, 0x5a3a20, 0.05,0.55,0.05, x,0.24,0));
+      g.add(part(G.box, 0xd83a2a, 0.5,0.07,0.14, 0,0.54,0));
+      driveBell = new THREE.Group(); driveBell.position.y = 0.5;
+      driveBell.add(part(G.cone6, 0xe8b840, 0.15,0.28,0.15, 0,-0.17,0)); driveBell.add(part(G.sph, 0x8a6a20, 0.04,0.04,0.04, 0,-0.33,0));
+      g.add(driveBell);
+    } else if (lv === 3){
+      const GD = 0xf4c430, DK = 0xb88a18;
+      g.add(part(G.box, 0x4a3a30, 0.42,0.12,0.36, 0,0.1,0));
+      g.add(part(G.sph, GD, 0.27,0.22,0.22, 0,0.42,0)); g.add(part(G.sph, GD, 0.15,0.15,0.15, 0.25,0.5,0));
+      g.add(part(G.box, DK, 0.07,0.1,0.12, 0.39,0.47,0));
+      for (const z of [-0.09,0.09]){ g.add(part(G.cone4, DK, 0.05,0.12,0.05, 0.25,0.66,z)); g.add(part(G.box, 0x222222, 0.03,0.04,0.03, 0.36,0.56,z*0.7)); }
+      for (const [x,z] of [[-.13,-.1],[.13,-.1],[-.13,.1],[.13,.1]]) g.add(part(G.box, DK, 0.07,0.16,0.07, x,0.22,z));
+      g.add(part(G.box, 0x4a3a20, 0.12,0.04,0.04, 0,0.64,0));
+      for (const z of [-0.23,0.23]){ const coin = part(G.cyl, 0xfff0a0, 0.08,0.03,0.08, 0,0.42,z); coin.rotation.x = Math.PI/2; g.add(coin); }
+    }
+  }
+  if (driveBell) driveBell.rotation.z = isNight() && !S.nightShift ? 0 : Math.sin(elapsed*6)*0.35;
+}
 const head = t => '<div class="ph"><span>'+t+'</span><button class="btn x" data-act="closePanel">×</button></div>';
 const segBtn = (act, label, on) => '<button class="btn '+(on?'on':'')+'" data-act="'+act+'">'+label+'</button>';
 function renderPanel(){
@@ -2381,9 +2644,10 @@ function renderPanel(){
       }).join('') + '</div>' + (buildTab === 'life' && !S.airport ? '<div class="kv" style="color:var(--sub);margin-top:6px">'+L('？？？：空港が開くと、もっと大きな楽しみが…','??? When the airport opens, something big awaits…')+'</div>' : '');
   } else if (panelName === 'upg'){
     h = head(L('アップグレード','Upgrades')) + '<div class="grid">' + UPGS.map(u=>{
-      const lv = S.upg[u.id], c = u.cost[lv], max = c === undefined;
-      return '<button class="opt" data-act="upg:'+u.id+'" '+(max || S.gold < c ? 'disabled' : '')+'><div class="n">'+N(u.n)+(u.cost.length>1?' Lv'+lv+'/'+u.cost.length:'')+'</div><div class="c">'+(max?L('取得済み','Owned'):fmt(c)+'G')+'</div><div class="d">'+N(u.d)+'</div></button>';
-    }).join('') + '</div>';
+      const lv = S.upg[u.id], c = u.cost[lv], max = c === undefined, T = u.tiers && u.tiers[Math.min(lv, u.tiers.length-1)];
+      const chain = u.tiers ? '<div class="d">'+u.tiers.map(([n], k) => k < lv ? '<span class="g">'+N(n)+'</span>' : N(n)).join(' → ')+'</div>' : '';
+      return '<button class="opt" data-act="upg:'+u.id+'" '+(max || S.gold < c ? 'disabled' : '')+'><div class="n">'+(T ? N(T[0]) : N(u.n)+(u.cost.length>1?' Lv'+lv+'/'+u.cost.length:''))+'</div><div class="c">'+(max?L('取得済み','Owned'):fmt(c)+'G')+'</div><div class="d">'+N(T ? T[1] : u.d)+'</div>'+chain+'</button>';
+    }).join('') + '</div>' + driveHTML();
   } else if (panelName === 'market'){
     const wh = S.cells[WH].b, lc = lvlCost(wh);
     const tb = trade.state === 'docked' ? L('交易気球：停泊中','Trade balloon: docked') : trade.state === 'away' ? L('交易気球：あと'+Math.ceil(trade.t)+'秒','Trade balloon: in '+Math.ceil(trade.t)+'s') : L('交易気球：移動中','Trade balloon: flying');
@@ -2495,7 +2759,7 @@ function doAct(actStr, el){
     case 'closePanel': closePanel(); break;
     case 'tab': buildTab = arg; break;
     case 'build': startMode({kind:'build', type:arg}); break;
-    case 'upg': { const u = UPGS.find(u=>u.id===arg), c = u.cost[S.upg[arg]]; if (c !== undefined && S.gold >= c){ S.gold -= c; S.upg[arg]++; toast(N(u.n)+L(' を手に入れた！',' acquired!'),'good'); sfx('fanfare'); if (arg === 'road') updatePaths(); } break; }
+    case 'upg': { const u = UPGS.find(u=>u.id===arg), c = u.cost[S.upg[arg]]; if (c !== undefined && S.gold >= c){ S.gold -= c; S.upg[arg]++; toast(N(u.tiers ? u.tiers[S.upg[arg]-1][0] : u.n)+L(' を手に入れた！',' acquired!'),'good'); sfx('fanfare'); if (arg === 'road') updatePaths(); } break; }
     case 'sell1': sell(arg, 1); break;
     case 'sellAll': case 'sellchip': sell(arg, S.items[arg]); break;
     case 'auto': S.auto[arg] = !S.auto[arg]; break;
@@ -2515,6 +2779,7 @@ function doAct(actStr, el){
     case 'closeModal': $('#modal').hidden = true; break;
     case 'skipTut': S.tut = TUT.length; endTutorial(); break;
     case 'airport': if (S.gold >= P.goal && !S.airport){ S.gold -= P.goal; S.airport = true; story('空港を開き、飛行船を迎えた','Opened an airport and welcomed an airship'); closePanel(); buildDock(); buildAirship(false); } break;
+    case 'drive': setDrive(+arg); break;
     case 'expand': expandIsland(arg); break;
     case 'airup': if (S.airport && S.airLvl < AIR_COST.length && S.gold >= AIR_COST[S.airLvl]){ S.gold -= AIR_COST[S.airLvl]; S.airLvl++; buildAirship(true); sfx('fanfare'); burst(airship.pad.x, 1.2, airship.pad.z, 'coin', 12);
       eventQueue.push({result:true, img:'airship_up', title:L('飛行船、改装完了！','The airship is refitted!'), text:L('Lv'+S.airLvl+'の飛行船になった。明日の朝から、もっと多くの観光客がやってくる。','Now a Lv'+S.airLvl+' airship. More tourists will come from tomorrow morning.')}); } break;
@@ -2963,6 +3228,7 @@ function frame(now){
   camS.shake = Math.max(0, camS.shake - dt*0.4); if (camS.shake < 0.004) camS.shake = 0;
   updateCam(); updateDayNight(elapsed); updateStrata();
   // 建物・木・岩のアニメ
+  const planned = new Set(ghost && ghost.visible ? plannedCells() : []);
   for (let i=0;i<W*W;i++){
     const g = CM[i]; if (!g) continue; const c = S.cells[i], u = g.userData;
     let s = 1;
@@ -2973,6 +3239,8 @@ function frame(now){
       u.hit -= dt; const k = u.hit/0.2;
       if (k > 0.75) g.scale.set(s*1.15, s*0.82, s*1.15); else { g.scale.setScalar(s); g.rotation.z = Math.sin(u.hit*60)*0.18*k; }
     } else { g.scale.setScalar(s); if (!(c.t==='b' && c.b.broken)) g.rotation.z = 0; }
+    // 置き場所を選ぶあいだ、草木は低くなり、予定地の草木は隠れる
+    if (c.t === 'tree' || c.t === 'sapling'){ if (mode) g.scale.y *= 0.45; g.visible = !planned.has(i); }
     if (c.t === 'b'){
       const b = c.b;
       if (u.scaffold) u.scaffold.visible = b.build > 0;
@@ -2993,6 +3261,8 @@ function frame(now){
   let underK = 0;
   for (const w of workers){
     const m = w.mesh, u = m.userData;
+    setGear(m, w.job, S.upg.carry || 0);
+    u.gear.visible = !w.under;
     if (w.under){
       const v = w.sleep ? null : ugPose(w, underK, wdt ? dt*S.speed : 0); underK++;
       m.visible = !!v; if (!v) continue;
@@ -3014,7 +3284,12 @@ function frame(now){
     u.legL.position.z = moving ? Math.sin(w.walk)*0.035 : 0; u.legR.position.z = -u.legL.position.z;
     u.body.rotation.x = w.work ? Math.max(0, Math.sin(w.t*9))*0.6 : 0;
     const held = w.carry || w.tasks[0]?.show;
-    u.carry.visible = !!held; if (held) u.carry.material = MT(ITEMS[held].c);
+    if (u.cargo){
+      u.carry.visible = false; u.cargo.visible = !!held;
+      if (held) for (const b of u.cargo.children) b.material = MT(ITEMS[held].c);
+      if (moving){ for (const h of u.wheels) h.rotation.x = w.walk*0.8; }
+      if (u.horse) u.horse.position.y = moving ? Math.abs(Math.sin(w.walk))*0.04 : 0;
+    } else { u.carry.visible = !!held; if (held) u.carry.material = MT(ITEMS[held].c); }
   }
   // 空のものたち
   for (const c of clouds){ const a = Math.atan2(c.position.z, c.position.x) + c.userData.v*dt*0.05, r = Math.hypot(c.position.x, c.position.z); c.position.x = Math.cos(a)*r; c.position.z = Math.sin(a)*r; }
@@ -3041,6 +3316,7 @@ function frame(now){
     if (nightAmt > 0.3 && wdt){ fwAcc += dt; if (fwAcc > 1.1){ fwAcc = 0; firework(); } }
     if (wdt) musicTick();
   } else if (bonfire.visible){ bonfire.visible = false; festLight.intensity = 0; }
+  updateRaze(dt); updateDrive(); updateStrollers(wdt ? dt*Math.min(4, S.speed) : 0);
   updateFx(wdt ? dt : 0); updatePops(dt); updateAirship(dt, elapsed); updateCritters(wdt ? dt : 0); updateBadges(); updateAlerts(); updateTourists(wdt ? dt*Math.min(4, S.speed) : 0);
   // マーカー・ホバー・置き場所プレビュー
   const mt = markerTarget();
@@ -3101,5 +3377,6 @@ window.DTT = {get S(){return S;}, P, W, WH, place, hire, levelUp, sell, clickCel
   skipTut:()=>{S.tut=-1;$('#tut').hidden=true;}, reset:resetGame,
   screenOf:(i)=>{const p=wpos(i); return toScreen(p.x,0,p.z);},
   bench:(n=30)=>{const px=new Uint8Array(4);const gl=renderer.getContext();const t0=performance.now();for(let k=0;k<n;k++){renderer.setRenderTarget(rt);renderer.render(scene,cam);renderer.setRenderTarget(null);renderer.render(postScene,postCam);gl.readPixels(0,0,1,1,gl.RGBA,gl.UNSIGNED_BYTE,px);}return (performance.now()-t0)/n;},
+  demolish, setDrive, updatePaths, regroup, entryOf, nodePt, strollers, razes, postMesh, pathMesh, get socialEdges(){return socialEdges;},
   ISL, ISLAND, BUILD, ITEMS, travel, save, showEnding, showTravel, pop, housing,
   get trade(){return trade;}, tourists, backups, airPhase, get airship(){return airship;}, camS, buildDock, buildAirship, updateTiles, moodBreakdown, offDuty, whale, get mode(){return mode;}, setLang:(l)=>{SET.lang=l; applySettings(); renderTop();}};
