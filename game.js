@@ -4122,6 +4122,7 @@ function applySettings(){
 }
 function herdLine(){
   const full = S.herd.filter(isFull).length, n = pastureAll();
+  if (isNight() && !S.nightShift) return L('牛 ','Cows ')+S.herd.length+'・'+L('お休み中','Resting');          // 夜は警告しない
   return L('牛 ','Cows ')+S.herd.length+(full ? L('（搾れる '+full+'）',' ('+full+' ready)') : '')+'・'+'<span class="'+(n ? 'g' : 'r')+'">'+(n ? L('輪の草 ','Grass in ring ')+n : L('鐘を移そう','Move the bell'))+'</span>';
 }
 function renderTop(){
