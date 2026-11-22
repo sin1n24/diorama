@@ -4752,9 +4752,9 @@ function shipList(isl){          // 金額の大きい順
   const box = st.shipped || st.soldBy || {};
   return ISLANDS[isl].items.filter(k => box[k] > 0).map(it => ({it, n:box[it]})).sort((a,b) => b.n*ITEMS[b.it].p - a.n*ITEMS[a.it].p).map(o => {
     const [u, steps] = SHIP[o.it], hit = steps.filter(([per]) => o.n >= per).pop(), v = hit ? o.n/hit[0] : 0, num = fmt(o.n);
-    o.txt = [ITEMS[o.it].n[0]+' '+num+u[0], num+' '+u[1]+' of '+ITEMS[o.it].n[1].toLowerCase()];
-    o.like = hit ? [0,1].map(k => CMP[hit[1]][k].replace('%n', v < 10 ? String(Math.round(v*10)/10) : fmt(Math.round(v)))) : null;
-    if (o.like) o.like = [o.like[0]+'ぐらい', 'about '+o.like[1]];
+    const en = ITEMS[o.it].n[1].toLowerCase(), k2 = v < 10 ? String(Math.round(v*10)/10) : fmt(Math.round(v));
+    o.txt = [ITEMS[o.it].n[0]+' '+num+u[0], num+' '+u[1]+(u[1] === en ? '' : ' of '+en)];
+    o.like = hit ? [CMP[hit[1]][0].replace('%n', k2)+'ぐらい', CMP[hit[1]][1].replace('%n', 'about '+k2)] : null;
     o.all = [o.txt[0]+(o.like ? '（'+o.like[0]+'）' : ''), o.txt[1]+(o.like ? ' ('+o.like[1]+')' : '')];
     return o;
   });
