@@ -51,7 +51,7 @@ const ISLANDS = {
 };
 /* 訪問リンク：#visit=<島の形>。サーバーは使わず、URLそのものに島が入っている */
 const SH_VER = 1, SH_ISL = ['sky','dairy','farm'];
-const SH_TYPES = ['warehouse','camp','quarry','forester','sawmill','workshop','smelter','factory','recycle','house','bakery','park','bath','fun','mower','saltpit','seeder','barn','churn','creamery','cellar','farmhut','windmill','picklery','patisserie','brewery'];
+const SH_TYPES = ['warehouse','camp','quarry','forester','sawmill','workshop','smelter','factory','recycle','house','bakery','park','bath','fun','mower','saltpit','seeder','barn','churn','creamery','cellar','farmhut','windmill','picklery','patisserie','brewery','bell'];
 const SH_NAME_MAX = 16, VISIT = (() => {
   const m = /^#visit=([A-Za-z0-9_-]{100,1200})$/.exec(location.hash); if (!m) return null;
   try {
@@ -131,6 +131,8 @@ const BUILD = {
 };
 // 酪農の島の建物
 Object.assign(BUILD, {
+  bell:     {n:['放牧の鐘','Herd Bell'], isl:'dairy', cost:{g:150}, grow:2.2, cat:'res',
+    d:['まわり5×5の草を牛が食べに行く。移動は無料','Cows graze the 5×5 around it. Moving is free.']},
   mower:    {n:['草刈り小屋','Mowing Hut'], isl:'dairy', cost:{g:60}, job:'chop', cat:'res',
     d:['近くの牧草を刈って干し草にし、小屋に貯める。遠い草ほど時間がかかる','Cuts nearby grass into hay and stores it. Far grass takes much longer.']},
   saltpit:  {n:['岩塩場','Salt Pit'], isl:'dairy', cost:{g:300}, job:'quarry', ind:true, cat:'res',
@@ -165,7 +167,7 @@ const UPGS = [
   {id:'route', n:['交易気球の定期便','Trade Balloon Route'], cost:[400],
     d:['気球が来るたびに、選んだ品物を自動で売る','Each balloon visit auto-sells the goods you choose.']},
   {id:'dog',   n:['牧羊犬','Sheepdog'], isl:'dairy', cost:[6000],
-    d:['輪の中の草がなくなると、鐘を近くの草地へ運んでくれる（いちばん良い場所とは限らない）','When the ring runs out of grass, the dog carries the bell to pasture nearby (not always the best spot).']},
+    d:['すべての鐘のそばに付き、草がなくなった鐘を近くの草地へ運ぶ（いちばん良い場所とは限らない）','One waits by every bell, and carries it to nearby pasture when its ring is bare (not always the best spot).']},
   {id:'pump',  n:['揚水水車','Waterwheel'], isl:'farm', cost:[400,1000,2200,4500,8000,11000,15000,20000,26000],
     d:['1Lvごとに川3マス。好きな所に敷ける。島を広げると上限+1','Each level gives 3 river tiles to lay where you like. Each expansion raises the limit by 1.']},
   {id:'axe',   n:['よく切れる道具','Sharp Tools'], cost:[200,1200,5000],
@@ -533,7 +535,7 @@ let socialEdges = [];
 function wearSocial(){
   socialEdges = [];
   const byType = {};
-  for (const i of allB()) if (i !== WH && S.cells[i].b.build <= 0) (byType[S.cells[i].b.type] ||= new Set()).add(entryOf(i));
+  for (const i of allB()) if (i !== WH && S.cells[i].b.type !== 'bell' && S.cells[i].b.build <= 0) (byType[S.cells[i].b.type] ||= new Set()).add(entryOf(i));
   for (const type in byType){
     const rest = [...byType[type]], done = rest.splice(0, 1);
     while (rest.length){
@@ -1108,6 +1110,10 @@ function makeBuilding(type, r=0.5, b=null){
   const alt = LOOKS[ISLAND]?.[type];          // 島ごとの見た目
   switch(alt ? '_alt' : type){
     case '_alt': alt(g, u, r, b); break;
+    case 'bell': {
+      const m = bellModel(); g.add(m); u.bell = m.userData.bell;
+      if (S.upg.dog){ u.dog = bellDogModel(); u.dog.position.set(0.34,0,0.26); g.add(u.dog); }
+      break; }
     case 'warehouse':
       g.add(part(G.box, 0xb08860, 0.9,0.5,0.75, 0,0.25,0)); roof(g, 0.98, 0.34, 0.5, 0x4a6aa8);
       g.add(part(G.box, 0x5a3a20, 0.3,0.32,0.03, 0,0.16,-0.38));
@@ -1370,7 +1376,7 @@ function makeBuilding(type, r=0.5, b=null){
     if (post) g.add(part(G.box, 0x3a3a44, 0.02,y,0.02, x,y/2-0.03,z));
   }
   // 隣の建物とのあいだに隙間をあける（住民が通るのが見えるように）
-  const BS = type === 'house' ? 0.9 : BUILD[type]?.size === 2 ? 1 : 0.8;
+  const BS = type === 'house' ? 0.9 : BUILD[type]?.size === 2 || type === 'bell' ? 1 : 0.8;
   const inner = new THREE.Group(); inner.scale.setScalar(BS);
   while (g.children.length) inner.add(g.children[0]);
   g.add(inner); u.inner = inner;
@@ -1488,7 +1494,7 @@ const stCap = b => (BUILD[b.type].in || BUILD[b.type].gen) ? bufCap(b) : 12 + 12
 function stAdd(b, it, n){ b.st = b.st || {}; b.st[it] = (b.st[it] || 0) + n; }
 function stMain(b){ let best = null, bn = 0; for (const k in b.st || {}) if (b.st[k] >= 1 && b.st[k] > bn){ bn = b.st[k]; best = k; } return best; }
 function buildCost(type){
-  const d = BUILD[type], n = countB(type), k = Math.pow(type==='house'?1.25:type==='park'?1.2:1.35, n), c = {};
+  const d = BUILD[type], n = countB(type), k = Math.pow(d.grow || (type==='house'?1.25:type==='park'?1.2:1.35), n), c = {};
   for (const key in d.cost) c[ISL.costMap[key] || key] = Math.round(d.cost[key] * k);
   return c;
 }
@@ -1574,6 +1580,7 @@ function place(type, i){
   const sz = BUILD[type].size || 1; for (const j of footCells(i, sz)){ clearSpot(j); if (j !== i){ S.cells[j] = {t:'occ', of:i}; setCellMesh(j); } }
   const b = newB(type); if (type === 'house') b.look = houseLook(null, Math.random());
   S.cells[i] = {t:'b', r:Math.random(), b};
+  if (type === 'bell'){ b.build = 0; refreshBells(); }          // 鐘は置いたらすぐ鳴る
   setCellMesh(i); CM[i].userData.pop = 0.35; sfx('build'); shake(0.06);
   burst(bCenter(i).x, 0.3, bCenter(i).z, 'stone', 6);
   assignLights();
@@ -1630,6 +1637,7 @@ function updateRaze(dt){
 }
 function demolish(i){
   const b = S.cells[i].b; if (!b || b.type === 'warehouse') return;
+  if (b.type === 'bell' && countB('bell') < 2){ toast(L('最後の鐘は撤去できない','The last bell can’t be removed'), 'bad'); return; }
   while (b.workers > 0) removeWorker(i);
   S.gold += Math.round(BUILD[b.type].cost.g * 0.4);
   if (BUILD[b.type].in) S.items[BUILD[b.type].in] += b.inb;
@@ -1638,7 +1646,7 @@ function demolish(i){
   razeFx(i);
   for (const w of workers) if (foot.includes(w.at)) w.at = undefined;
   for (const j of foot){ S.cells[j] = {t:'grass', r:Math.random()}; setCellMesh(j); }
-  assignLights(); select(-1);
+  assignLights(); select(-1); refreshBells();
 }
 function hire(i){
   const b = S.cells[i].b;
@@ -1649,7 +1657,7 @@ function hire(i){
   S.gold -= c; addWorker(i); sfx('hire');
 }
 function levelUp(i){
-  const b = S.cells[i].b; if (b.lvl >= 5) return;
+  const b = S.cells[i].b; if (b.lvl >= 5 || b.type === 'bell') return;
   const c = lvlCost(b); if (S.gold < c) return;
   S.gold -= c; b.lvl++; if (BUILD[b.type].fun) setCellMesh(i); CM[i].userData.pop = 0.35; sfx('build'); burst(wpos(i).x, 0.6, wpos(i).z, 'coin', 8);
 }
@@ -1945,14 +1953,28 @@ function collect(i){
 const COW = {first:3, max:20, full:4, biteT:3, yield:0.5, hay:0.6, speed:0.75, ring:2, mud:9, trample:0.06, rest:40, mudRest:220, price:220, grow:1.28};
 const COW_NAMES = [['ミルク','Milky'],['こむぎ','Wheat'],['まめ','Bean'],['わたあめ','Cotton'],['おもち','Mochi'],['きなこ','Kinako'],['だいふく','Daifuku'],['あずき','Azuki'],['ぷりん','Pudding'],['しらたま','Pearl'],['くるみ','Walnut'],['もなか','Monaka'],['はなこ','Daisy'],['ゆず','Yuzu'],['ごま','Sesame'],['つくし','Clover'],['もも','Peach'],['すず','Bell'],['こはる','Sunny'],['そら','Sky'],['ちょこ','Cocoa'],['ぽてと','Potato'],['むぎ','Barley'],['ゆき','Snow']];
 const isDairy = ISLAND === 'dairy';
-const inRing = i => cheb(i, S.bell) <= COW.ring;
+let bellList = [];          // 鐘のマス（いくつでも）
+function refreshBells(){ if (!isDairy) return; bellList = allB('bell'); if (bellList.length) S.bell = bellList[0]; }
+const inRing = i => bellList.some(b => cheb(i, b) <= COW.ring);
 const isMud = i => !!S.soil && (S.soil[i]?.v || 0) >= COW.mud;
+const pastureAll = () => { let n = 0; for (let i=0;i<W*W;i++) if (S.cells[i].t === 'tree' && inRing(i)) n++; return n; };
+const canStand = i => ['grass','sapling','tree'].includes(S.cells[i].t);
+// 鐘のない前の仕様のセーブ・訪問：いちばん近い空きマスに鐘を1つ
+function ensureBell(s, at){
+  if (s.cells.some(c => c.t === 'b' && c.b.type === 'bell')) return;
+  let best = -1, bd = 1e9;
+  s.cells.forEach((c, i) => { if (!['grass','sapling','tree'].includes(c.t)) return; const d = cheb(i, at) + (c.t === 'grass' ? 0 : 0.2); if (d < bd){ bd = d; best = i; } });
+  if (best < 0) return;
+  s.cells[best] = {t:'b', r:0.5, b:{type:'bell', lvl:1, workers:0, inb:0, st:{}, prog:0, build:0}};
+  s.bell = best;
+}
 const pastureAt = at => { let n = 0; for (let i=0;i<W*W;i++) if (S.cells[i].t === 'tree' && cheb(i, at) <= COW.ring) n++; return n; };
 const cowCap = () => Math.min(COW.max, COW.first + allB('barn').reduce((a,i) => a + 2 + S.cells[i].b.lvl, 0));
 const cowCost = () => Math.round(COW.price * Math.pow(COW.grow, Math.max(0, S.herd.length - COW.first)));
 const isFull = c => c.belly >= COW.full;
 const starCow = () => S.herd?.reduce((a,c) => !a || c.total > a.total ? c : a, null);
-let soilAcc = 0, ringWasEmpty = false;
+let soilAcc = 0;
+const ringWasEmpty = new Set();
 
 function newCow(near){
   const used = new Set(S.herd.map(c => c.name)); let name = 0;
@@ -1964,20 +1986,31 @@ function newCow(near){
 function initHerd(){
   if (!isDairy) return false;
   S.soil ??= {}; S.upg.dog ??= 0;
-  if (S.herd) return false;
+  if (S.herd){ ensureBell(S, S.bell ?? WH); refreshBells(); return false; }
   let best = WH, bn = -1;
   for (let i=0;i<W*W;i++) if (S.cells[i].t !== 'void' && S.cells[i].t !== 'b'){ const n = pastureAt(i) - cheb(i, WH)*0.3; if (n > bn){ bn = n; best = i; } }
   S.bell = best; S.herd = [];
-  for (let k=0;k<COW.first;k++) newCow(best);
+  ensureBell(S, best); refreshBells();
+  for (let k=0;k<COW.first;k++) newCow(S.bell);
   return true;
 }
-function setBell(i, byDog){
-  if (!isDairy || S.cells[i].t === 'void') return;
-  const from = S.bell; S.bell = i;
+function bellWhy(from, to){
+  if (from === to) return L('同じ場所','Same spot');
+  return canStand(to) ? '' : S.cells[to].t === 'void' ? L('島の外です','Outside the island') : L('ここには鐘を置けない','The bell can’t stand here');
+}
+function setBell(to, byDog, from = bellList[0]){          // 移動は無料・すぐ
+  if (!isDairy || from === undefined || !isB(from, 'bell') || bellWhy(from, to)) return false;
   for (const c of S.herd){ c.tgt = -1; c.t = 0; c.roam = null; }
   for (const k in S.soil) if (cheb(+k, from) <= COW.ring) S.soil[k].t = simNow();   // ここから休ませはじめる
-  S.stats.bellMoves = (S.stats.bellMoves || 0) + 1; ringWasEmpty = false;
-  const p = wpos(i); popAt(p.x, 1, p.z, byDog ? L('ワン！','Woof!') : L('カラン♪','Clang♪')); sfx('pet');
+  clearSpot(to);
+  const c = S.cells[from];
+  S.cells[to] = c; S.cells[from] = {t:'grass', r:Math.random()};
+  setCellMesh(from); setCellMesh(to); if (CM[to]) CM[to].userData.pop = 0.3;
+  refreshBells(); assignLights();
+  if (selCell === from) select(to);
+  S.stats.bellMoves = (S.stats.bellMoves || 0) + 1; ringWasEmpty.delete(from); ringWasEmpty.delete(to);
+  const p = wpos(to); popAt(p.x, 1, p.z, byDog ? L('ワン！','Woof!') : L('カラン♪','Clang♪')); sfx('pet');
+  return true;
 }
 function milkAmount(c){ return Math.max(1, Math.round(c.load * COW.yield * (S.flags.holstein ? 1.3 : 1))); }
 function emptyCow(c, n){ c.total += n; c.belly = 0; c.load = 0; c.wait = -1; c.t = 0; }
@@ -1996,12 +2029,13 @@ function buyCow(i){
   return true;
 }
 function herdStep(dt){
-  const night = isNight(), barns = allB('barn').filter(i => S.cells[i].b.build <= 0 && !S.cells[i].b.broken), busy = {};
+  const night = isNight(), barns = allB('barn').filter(i => S.cells[i].b.build <= 0 && !S.cells[i].b.broken), busy = {}, queue = {};
+  refreshBells();
   for (const c of S.herd) if (c.tgt >= 0) busy[c.tgt] = (busy[c.tgt] || 0) + 1;
   const nearBarn = (c, ok) => { let b = -1, bd = 1e9; for (const i of barns){ if (ok && !ok(S.cells[i].b)) continue; const p = wpos(i), d = Math.hypot(p.x - c.x, p.z - c.z); if (d < bd){ bd = d; b = i; } } return b; };
   S.herd.forEach((c, k) => {
-    let goal, barn = -1, graze = false;
-    c.eating = false;
+    let goal, barn = -1, graze = false, stored = false;
+    c.eating = false; if (!night) c.inside = false;
     if (isFull(c) || night){
       c.tgt = -1;
       barn = isFull(c) ? nearBarn(c, b => b.workers > 0) : nearBarn(c, b => b.inb >= 1);
@@ -2010,8 +2044,8 @@ function herdStep(dt){
       if (c.tgt >= 0 && (S.cells[c.tgt].t !== 'tree' || !inRing(c.tgt))){ busy[c.tgt]--; c.tgt = -1; }
       if (c.tgt < 0){
         let bd = 1e9;
-        for (let dz=-COW.ring; dz<=COW.ring; dz++) for (let dx=-COW.ring; dx<=COW.ring; dx++){
-          const x = cx(S.bell)+dx, z = cz(S.bell)+dz; if (x<0||z<0||x>=W||z>=W) continue;
+        for (const bl of bellList) for (let dz=-COW.ring; dz<=COW.ring; dz++) for (let dx=-COW.ring; dx<=COW.ring; dx++){
+          const x = cx(bl)+dx, z = cz(bl)+dz; if (x<0||z<0||x>=W||z>=W) continue;
           const j = z*W+x; if (S.cells[j].t !== 'tree' || (busy[j] || 0) >= 2) continue;
           const p = wpos(j), d = Math.hypot(p.x - c.x, p.z - c.z) - (S.cells[j].clover ? 1 : 0);
           if (d < bd){ bd = d; c.tgt = j; }
@@ -2022,9 +2056,16 @@ function herdStep(dt){
       else barn = nearBarn(c, b => b.inb >= 1);
     }
     if (graze){ const p = wpos(c.tgt), side = k % 2 ? 1 : -1; goal = {x:p.x + side*0.36, z:p.z + 0.12}; }
+    else if (barn >= 0 && night){          // 夜：1頭おきに牛舎の中へ。外の牛は間をあけて休む
+      const p = wpos(barn), q = queue[barn] || 0; queue[barn] = q + 1; stored = q % 2 === 1;
+      const n = Math.floor(q/2), side = [0,-1,1,-2,2][n % 5];
+      goal = stored ? {x:p.x, z:Math.min(W/2 - 0.15, p.z + 0.4)} : {x:clamp(p.x + side*0.44, -W/2 + 0.2, W/2 - 0.2), z:Math.min(W/2 - 0.15, p.z + 0.5 + Math.floor(n/5)*0.38)};
+      if (!stored) c.inside = false;
+      else if (c.inside){ c.x = goal.x; c.z = goal.z; }
+    }
     else if (barn >= 0){ const p = wpos(barn); goal = {x:p.x + ((k%5) - 2)*0.26, z:Math.min(W/2 - 0.15, p.z + 0.5 + (Math.floor(k/5)%3)*0.17)}; }
     else {
-      if (!c.roam || Math.random() < dt*0.12){ const b = wpos(S.bell); c.roam = {x:b.x + rnd(-1,1), z:b.z + rnd(-1,1)}; }
+      if (!c.roam || Math.random() < dt*0.12){ const b = wpos(bellList.length ? bellList[k % bellList.length] : WH); c.roam = {x:b.x + rnd(-1,1), z:b.z + rnd(-1,1)}; }
       goal = c.roam;
     }
     c.wait = -1;
@@ -2033,7 +2074,8 @@ function herdStep(dt){
       const st = Math.min(d, COW.speed * dt);
       c.x += dx/d*st; c.z += dz/d*st; c.face = Math.atan2(dx, dz); c.moving = true; return;
     }
-    c.moving = false;
+    c.moving = false; c.inside = stored;
+    if (night && !graze && !stored) c.face = Math.PI + (c.name % 3 - 1)*0.5;
     if (isFull(c)){ c.wait = barn; return; }
     if (!graze && barn < 0) return;
     const hay = !graze && S.cells[barn].b;
@@ -2054,7 +2096,8 @@ function herdStep(dt){
 }
 // 輪の外で休んだ食べ跡はクローバーに。草のない輪に居座ると泥に
 function soilStep(dt, night){
-  const now = simNow(), left = pastureAt(S.bell), hungry = !night && !left && S.herd.length > 0;
+  refreshBells();
+  const now = simNow(), left = pastureAll(), hungry = !night && !left && S.herd.length > 0;
   for (const k in S.soil){
     const i = +k, so = S.soil[k], c = S.cells[i];
     if (c.t === 'b' || c.t === 'occ' || c.t === 'void'){ delete S.soil[k]; continue; }
@@ -2075,17 +2118,28 @@ function soilStep(dt, night){
       S.stats.clover = (S.stats.clover || 0) + 1;
     }
   }
-  if (left || night){ ringWasEmpty = false; return; }
-  if (S.upg.dog){
-    let best = -1, bd = 1e9;
-    for (let i=0;i<W*W;i++){ if (S.cells[i].t === 'void') continue; const n = pastureAt(i); if (n < 2) continue; const d = cheb(i, S.bell) - Math.min(n, 5)*0.4; if (d < bd){ bd = d; best = i; } }
-    if (best >= 0){ setBell(best, true); return; }
+  if (night){ ringWasEmpty.clear(); return; }
+  for (const bl of bellList.slice()){
+    if (pastureAt(bl)){ ringWasEmpty.delete(bl); continue; }
+    if (S.upg.dog){          // 牧羊犬：ほかの鐘の輪と重ならない草地をえらぶ
+      let best = -1, bd = 1e9;
+      for (let i=0;i<W*W;i++){
+        if (!canStand(i)) continue;
+        const n = pastureAt(i) - (S.cells[i].t === 'tree' ? 1 : 0); if (n < 2) continue;
+        let d = cheb(i, bl) - Math.min(n, 5)*0.4;
+        if (bellList.some(b => b !== bl && cheb(b, i) <= COW.ring)) d += 3;
+        if (d < bd){ bd = d; best = i; }
+      }
+      if (best >= 0 && setBell(best, true, bl)) continue;
+    }
+    if (ringWasEmpty.has(bl)) continue;
+    ringWasEmpty.add(bl);
+    if (!left) toast(L('輪の草を食べ尽くした。鐘をタップして移動すると、食べ跡はクローバーになる','The rings are grazed bare. Tap a bell to move it and clover will follow'), 'ev');
   }
-  if (!ringWasEmpty){ ringWasEmpty = true; toast(L('輪の中の草を食べ尽くした。鐘を移すと、食べ跡はクローバーになる','The ring is grazed bare. Move the bell and clover will follow'), 'ev'); }
 }
 
 // 鐘と輪・土の色
-const bellG = new THREE.Group(), ringG = new THREE.Group(); scene.add(bellG, ringG); bellG.visible = ringG.visible = false;
+const ringG = new THREE.Group(); scene.add(ringG); ringG.visible = false;
 const ringMat = new THREE.MeshBasicMaterial({color:0xffe070});
 function bellModel(){
   const g = new THREE.Group();
@@ -2095,30 +2149,50 @@ function bellModel(){
   b.add(part(G.cone6, 0xf0c040, 0.14,0.27,0.14, 0,-0.18,0)); b.add(part(G.sph, 0x8a6a20, 0.035,0.035,0.035, 0,-0.33,0));
   g.add(b); g.userData.bell = b; return g;
 }
-let bellBody = null, bellDog = null, paintAcc = 1;
+let paintAcc = 1;
+const ringBad = new THREE.MeshBasicMaterial({color:0xff6b5b}), rings = [];
+function bellDogModel(){
+  const d = new THREE.Group(), BK = 0x2a2624, WT = 0xf8f4e8;
+  d.add(part(G.box, BK, 0.17,0.16,0.3, 0,0.19,0)); d.add(part(G.box, WT, 0.18,0.12,0.1, 0,0.17,0.12));
+  d.add(part(G.box, BK, 0.15,0.14,0.13, 0,0.33,0.19)); d.add(part(G.box, WT, 0.05,0.15,0.135, 0,0.33,0.195)); d.add(part(G.box, 0xd89058, 0.09,0.07,0.08, 0,0.29,0.28));
+  for (const x of [-0.06,0.06]) d.add(part(G.cone4, BK, 0.04,0.09,0.03, x,0.44,0.17));
+  for (const [x,z] of [[-.06,-.1],[.06,-.1],[-.06,.1],[.06,.1]]) d.add(part(G.box, WT, 0.04,0.12,0.04, x,0.06,z));
+  const t = part(G.box, WT, 0.045,0.17,0.045, 0,0.3,-0.17); t.rotation.x = -0.6; d.add(t); d.userData.tail = t;
+  return d;
+}
+function ringModel(){
+  const g = new THREE.Group(), R = COW.ring + 0.5;
+  for (let k=0;k<10;k++) for (let side=0;side<4;side++){
+    const t = -R + (k+0.5)*R*2/10, m = new THREE.Mesh(G.box, ringMat);
+    m.scale.set(side<2 ? 0.28 : 0.05, 0.025, side<2 ? 0.05 : 0.28);
+    m.position.set(side<2 ? t : (side===2 ? -R : R), 0.04, side<2 ? (side ? R : -R) : t); g.add(m);
+  }
+  ringG.add(g); return g;
+}
 function updateBell(dt){
   if (!isDairy || !S.herd) return;
-  if (!bellBody){
-    bellBody = bellModel(); bellG.add(bellBody);
-    bellDog = new THREE.Group(); bellDog.position.set(0.42,0,0.2); bellDog.rotation.y = 0.8;
-    bellDog.add(part(G.box, 0x3a3230, 0.12,0.12,0.22, 0,0.13,0)); bellDog.add(part(G.box, 0xf4f0e8, 0.1,0.1,0.1, 0,0.22,0.13)); bellDog.add(part(G.box, 0xf4f0e8, 0.03,0.1,0.03, 0,0.2,-0.12));
-    for (const [x,z] of [[-.04,-.07],[.04,-.07],[-.04,.07],[.04,.07]]) bellDog.add(part(G.box, 0xf4f0e8, 0.03,0.09,0.03, x,0.045,z));
-    bellG.add(bellDog);
-    const R = COW.ring + 0.5;
-    for (let k=0;k<10;k++) for (let side=0;side<4;side++){
-      const t = -R + (k+0.5)*R*2/10, m = new THREE.Mesh(G.box, ringMat);
-      m.scale.set(side<2 ? 0.28 : 0.05, 0.025, side<2 ? 0.05 : 0.28);
-      m.position.set(side<2 ? t : (side===2 ? -R : R), 0.04, side<2 ? (side ? R : -R) : t); ringG.add(m);
-    }
+  refreshBells();
+  const placing = mode?.kind === 'bell' || (mode?.kind === 'build' && mode.type === 'bell'), night = isNight();
+  const at = bellList.filter(b => !(mode?.kind === 'bell' && hoverCell >= 0 && b === mode.from));
+  if (placing && hoverCell >= 0) at.push(hoverCell);
+  while (rings.length < at.length) rings.push(ringModel());
+  ringG.visible = true;
+  rings.forEach((g, k) => {
+    g.visible = k < at.length; if (!g.visible) return;
+    const p = wpos(at[k]), bare = !pastureAt(at[k]) && (!night || placing);          // 夜は赤くしない
+    g.position.set(p.x, 0, p.z);
+    if (g.userData.bare !== bare){ g.userData.bare = bare; for (const m of g.children) m.material = bare ? ringBad : ringMat; }
+  });
+  for (const i of bellList){
+    const u = CM[i]?.userData; if (!u?.bell) continue;
+    const bare = !night && !pastureAt(i);
+    u.bell.rotation.z = night ? 0 : Math.sin(elapsed*(bare ? 8 : 2))*(bare ? 0.4 : 0.1);
+    if (!u.dog) continue;          // 鐘の番をする牧羊犬：昼は見回り、夜は伏せる
+    const a = night ? 0.9 : 0.9 + Math.sin(elapsed*0.7 + i)*1.1;
+    u.dog.position.set(Math.sin(a)*0.43, night ? -0.07 : Math.abs(Math.sin(elapsed*6 + i))*0.025, Math.cos(a)*0.43);
+    u.dog.rotation.y = night ? 2.2 : a + (Math.cos(elapsed*0.7 + i) >= 0 ? Math.PI/2 : -Math.PI/2);
+    u.dog.userData.tail.rotation.z = night ? 0 : Math.sin(elapsed*12)*0.4;
   }
-  const picking = mode?.kind === 'bell' && hoverCell >= 0, p = wpos(S.bell), rp = picking ? wpos(hoverCell) : p;
-  bellG.visible = ringG.visible = true;
-  bellG.position.set(p.x, 0, p.z); ringG.position.set(rp.x, 0, rp.z);
-  bellG.scale.setScalar(S.cells[S.bell].t === 'b' ? 1.2 : 1);
-  const empty = !pastureAt(picking ? hoverCell : S.bell);
-  ringMat.color.set(empty ? 0xff6b5b : 0xffe070);
-  bellBody.userData.bell.rotation.z = Math.sin(elapsed*(empty ? 8 : 2))*(empty ? 0.4 : 0.1);
-  bellDog.visible = !!S.upg.dog;
   paintAcc += dt;
   if (paintAcc < 1) return;
   paintAcc = 0;
@@ -2596,11 +2670,10 @@ function greenRescue(){
 }
 // 救済：お金がなく、輪の草も尽きたままなら、長老が鐘を草地へ運んでくれる
 function herdRescue(){
-  if (!isDairy || !S.herd || S.gold >= 300 || pastureAt(S.bell)) return;
+  if (!isDairy || !S.herd || S.gold >= 300 || pastureAll()) return;
   let best = -1, bn = 0;
-  for (let i=0;i<W*W;i++) if (S.cells[i].t !== 'void'){ const n = pastureAt(i); if (n > bn){ bn = n; best = i; } }
-  if (best < 0) return;
-  setBell(best);
+  for (let i=0;i<W*W;i++) if (canStand(i)){ const n = pastureAt(i) - (S.cells[i].t === 'tree' ? 1 : 0); if (n > bn){ bn = n; best = i; } }
+  if (best < 0 || !setBell(best)) return;
   toast(L('見かねた長老が、鐘を草地へ運んでくれた','The elder took pity and carried the bell to fresh pasture'), 'good');
 }
 // 救済：お金が尽きて修理もできないなら、住民たちが朝に1棟だけ直してくれる
@@ -2856,7 +2929,7 @@ const EVENTS = [
   {id:'calf', w:2, isl:'dairy', cond:()=>countB('barn') && S.day >= 4, make:()=>{
     const price = 300 + 40*S.day, i = allB('barn').sort((a,b)=>S.cells[a].b.lvl - S.cells[b].b.lvl)[0];
     return {img:'d_calf', title:L('子牛が生まれた！','A calf is born!'), text:L('夜明け前、牛舎で元気な子牛が生まれた。本土の牧場が「ぜひ譲ってほしい」と言ってきている。','Before dawn a healthy calf was born in the barn. A mainland ranch wants to buy it.'), opts:[
-      {l:L('名前をつけて島で育てる','Name it and raise it here'), d:L('牛が1頭増える。幸福 +5','One more cow. Happiness +5'), f:()=>{ const nc = S.herd.length < COW_NAMES.length ? newCow(isB(i, 'barn') ? i : S.bell) : starCow(); addMood(5); story('子牛に名前をつけて育てた','Named and raised a calf'); return {img:'d_calf', title:L('島の新しい仲間','A new islander'), text:L('子牛は「'+COW_NAMES[nc.name][0]+'」と名づけられ、みんなの人気者になった。','The calf was named “'+COW_NAMES[nc.name][1]+'” and became everyone’s favorite.')}; }},
+      {l:L('名前をつけて島で育てる','Name it and raise it here'), d:L('牛が1頭増える。幸福 +5','One more cow. Happiness +5'), f:()=>{ const nc = S.herd.length < COW_NAMES.length ? newCow(isB(i, 'barn') ? i : bellList[0] ?? WH) : starCow(); addMood(5); story('子牛に名前をつけて育てた','Named and raised a calf'); return {img:'d_calf', title:L('島の新しい仲間','A new islander'), text:L('子牛は「'+COW_NAMES[nc.name][0]+'」と名づけられ、みんなの人気者になった。','The calf was named “'+COW_NAMES[nc.name][1]+'” and became everyone’s favorite.')}; }},
       {l:L('本土の牧場に譲る（+'+fmt(price)+'G）','Sell it to the mainland (+'+fmt(price)+'G)'), d:L('お金が入る。幸福 -3','You get the money. Happiness -3'), f:()=>{ S.gold += price; S.stats.earned += price; addMood(-3); }},
     ]};
   }},
@@ -3024,7 +3097,7 @@ const EVENTS = [
 function quake(){
   shake(0.35); sfx('build');
   for (const i of allB()){ const b = S.cells[i].b; for (const k in b.st || {}) b.st[k] = Math.floor(b.st[k]/2); }
-  const c = allB().filter(i=>S.cells[i].b.type !== 'warehouse' && S.cells[i].b.type !== 'house');
+  const c = allB().filter(i=>!['warehouse','house','bell'].includes(S.cells[i].b.type));
   if (c.length){ const i = c[Math.floor(Math.random()*c.length)]; S.cells[i].b.broken = true; CM[i].rotation.z = 0.12; }
   addMood(-8);
 }
@@ -3227,12 +3300,13 @@ function updateHerd(){
   }
 }
 function poseCow(c){
-  const r = c.ref, u = c.mesh.userData;
-  c.mesh.position.set(r.x, r.moving ? Math.abs(Math.sin(elapsed*8 + r.name))*0.03 : 0, r.z);
+  const r = c.ref, u = c.mesh.userData, night = isNight(), rest = night && !r.moving && !r.eating;
+  c.mesh.visible = !r.inside;          // 夜、牛舎の中
+  c.mesh.position.set(r.x, r.moving ? Math.abs(Math.sin(elapsed*8 + r.name))*0.03 : rest ? -0.07 + Math.sin(elapsed*1.4 + r.name)*0.008 : 0, r.z);
   c.mesh.rotation.y = r.face;
-  u.head.position.y = r.eating ? 0.15 + Math.abs(Math.sin(elapsed*5 + r.name))*0.05 : 0.3;
+  u.head.position.y = r.eating ? 0.15 + Math.abs(Math.sin(elapsed*5 + r.name))*0.05 : rest ? 0.19 : 0.3;
   u.udder.scale.setScalar(0.07 + 0.11*Math.min(1, r.belly/COW.full));
-  u.drop.visible = isFull(r);
+  u.drop.visible = isFull(r) && (!night || !!S.nightShift);          // しずく＝搾れる。搾る人が寝ている夜は出さない
   u.drop.position.y = 0.66 + Math.sin(elapsed*4 + r.name)*0.06;
 }
 function updateCritters(dt){
@@ -3501,7 +3575,7 @@ const LSTYLE = {
 };
 function assignLights(){
   regroup();
-  const cand = allB();
+  const cand = allB().filter(i => S.cells[i].b.type !== 'bell');
   const m4 = new THREE.Matrix4(), col = new THREE.Color(); let ng = 0;
   for (const i of cand){
     if (ng >= 160) break;
@@ -3635,10 +3709,13 @@ function pick(){
   return -1;
 }
 const modeSize = () => mode.kind === 'bell' || mode.kind === 'tool' || mode.kind === 'river' ? 1 : mode.kind === 'build' ? BUILD[mode.type].size || 1 : bSize(mode.from);
-function modeWhy(i){ if (mode.kind === 'bell') return ''; if (mode.kind === 'river') return riverWhy(i); if (mode.kind === 'tool') return toolWhy(mode.tool, i); return mode.kind === 'build' ? canPlace(mode.type, i) : moveWhy(mode.from, i); }
+function modeWhy(i){ if (mode.kind === 'bell') return bellWhy(mode.from, i); if (mode.kind === 'river') return riverWhy(i); if (mode.kind === 'tool') return toolWhy(mode.tool, i); return mode.kind === 'build' ? canPlace(mode.type, i) : moveWhy(mode.from, i); }
 function doMode(i){
   const why = modeWhy(i); if (why){ toast(why, 'bad'); sfx('ui'); return; }
-  if (mode.kind === 'bell'){ setBell(i); cancelMode(); return; }
+  if (mode.kind === 'bell'){
+    const why = bellWhy(mode.from, i); if (why){ toast(why, 'bad'); return; }
+    setBell(i, false, mode.from); cancelMode(); return;
+  }
   if (mode.kind === 'tool'){ useTool(mode.tool, i); return; }
   if (mode.kind === 'river'){ useRiver(i); riverBar(); return; }          // 続けて何マスでも置ける
   if (mode.kind === 'build'){ const t = mode.type; place(t, i); if (!keys.Shift) cancelMode(); select(i); }
@@ -3696,13 +3773,17 @@ function startMode(m){
   toast(m.kind === 'build' ? L(N(BUILD[type].n)+'：置きたい場所を選ぶ', N(BUILD[type].n)+': choose a spot') : L('移動先を選ぶ（'+P.moveCost+'G・'+P.moveTime+'秒ほど止まる）','Choose a new spot ('+P.moveCost+'G, pauses ~'+P.moveTime+'s)'));
 }
 function bellInfo(i){
+  const why = bellWhy(mode.from, i);
+  return '<b>'+N(BUILD.bell.n)+'</b><div class="kv">'+(why ? '<span class="r">× '+why+'</span><br>' : '')+bellStat(i)+'</div>';
+}
+function bellStat(i){
   let n = 0, cl = 0, mud = 0, rest = 0;
   for (let j=0;j<W*W;j++) if (cheb(i,j) <= COW.ring){ const c = S.cells[j]; if (c.t === 'tree'){ n++; if (c.clover) cl++; } else if (c.t === 'grass' && S.soil[j]){ if (isMud(j)) mud++; else rest++; } }
   const bs = allB('barn'), dist = bs.length ? Math.min(...bs.map(b => cheb(i,b))) : -1;
-  return '<b>'+L('放牧の鐘','Grazing bell')+'</b><div class="kv">' + (n ? '<span class="g">'+L('食べられる草 ','Grass to graze ')+n+(cl ? L('（クローバー '+cl+'）',' (clover '+cl+')') : '')+'</span>' : '<span class="r">'+L('食べられる草がない','Nothing to graze')+'</span>') +
+  return (n ? '<span class="g">'+L('食べられる草 ','Grass to graze ')+n+(cl ? L('（クローバー '+cl+'）',' (clover '+cl+')') : '')+'</span>' : '<span class="r">'+L('食べられる草がない','Nothing to graze')+'</span>') +
     (rest ? '<br><span class="r">'+L('休ませ中の食べ跡 '+rest+'（輪に入れると生えない）','Resting patches '+rest+' (no regrowth inside the ring)')+'</span>' : '') +
     (mud ? '<br><span class="r">'+L('泥地 ','Mud ')+mud+'</span>' : '') +
-    (dist >= 0 ? '<br>'+(dist <= 3 ? '<span class="g">' : dist >= 6 ? '<span class="r">' : '<span>')+L('牛舎まで ','Barn distance ')+dist+'</span>' : '') + '</div>';
+    (dist >= 0 ? '<br>'+(dist <= 3 ? '<span class="g">' : dist >= 6 ? '<span class="r">' : '<span>')+L('牛舎まで ','Barn distance ')+dist+'</span>' : '');
 }
 function placementInfo(i){
   if (mode.kind === 'bell') return bellInfo(i);
@@ -3721,6 +3802,7 @@ function placementInfo(i){
   if (d.job === 'chop'){ const n = nearCount('tree') + (isFarm ? nearCount('sapling') : 0); Lst.push((n>=8?'<span class="g">':n<4?'<span class="r">':'<span>')+L('近くの'+ISL.treeN[0]+' ','Nearby '+ISL.treeN[1]+' ')+n+'</span>'); }
   if (d.job === 'quarry' && !S.flags.mine){ const n = nearCount('rock'); Lst.push((n>=2?'<span class="g">':'<span class="r">')+L('近くの岩 ','Nearby rocks ')+n+'</span>'); }
   if (!d.near && !d.plant && type !== 'fun'){ const dist = cheb(i, WH); Lst.push(dist <= 3 ? '<span class="g">'+L('市場に近い','Close to the market')+'</span>' : dist >= 6 ? '<span class="r">'+L('市場から遠い（運ぶのがとても遅い）','Far from the market (slow hauling)')+'</span>' : L('市場まで ','Market distance ')+dist); }
+  if (type === 'bell') Lst.push(bellStat(i));
   return '<b>'+N(d.n)+'</b>　'+(mode.kind === 'build' ? costTxt(buildCost(type)) : L('移動：','Move: ')+P.moveCost+'G')+'<div class="kv">'+Lst.join('<br>')+'</div>';
 }
 
@@ -3889,6 +3971,7 @@ function renderBPanel(){
   else if (d.in) status = b._working ? '<span class="g">'+L('稼働中','Working')+'</span>' : !b.workers ? '<span class="r">'+L('住民がいない','No workers')+'</span>' : b.inb < 1 ? '<span class="r">'+L('材料待ち','Waiting for materials')+'</span>' : stTotal(b) >= bufCap(b) ? '<span class="r">'+L('完成品が満杯','Output full')+'</span>' : L('待機','Idle');
   else if (d.job) status = !b.workers ? '<span class="r">'+L('住民がいない','No workers')+'</span>' : stTotal(b) >= stCap(b) ? '<span class="r">'+L('貯蔵が満杯','Storage full')+'</span>' : '<span class="g">'+L('作業中','Working')+'</span>';
   if (status) Lst.push(status);
+  if (b.type === 'bell') Lst.push(bellStat(selCell));
   if (d.herd && S.herd) Lst.push(L('牛 ','Cows ')+S.herd.length+'/'+cowCap()+L('頭','')+'　'+L('エサの干し草 ','Hay feed ')+b.inb+'/'+bufCap(b)+'<br>'+N(ITEMS.milk.n)+' '+Math.floor(stTotal(b))+'/'+bufCap(b));
   else if (d.in) Lst.push(N(ITEMS[d.in].n)+' '+b.inb+'/'+bufCap(b)+' → '+N(ITEMS[d.out].n)+' '+Math.floor(stTotal(b))+'/'+bufCap(b));
   if (d.job){ const it = Object.keys(b.st||{}).filter(k=>b.st[k]>=1).map(k=>N(ITEMS[k].n)+' '+Math.floor(b.st[k])).join('・'); Lst.push(L('貯蔵','Stored')+' '+Math.floor(stTotal(b))+'/'+stCap(b)+(it?'（'+it+'）':'')); }
@@ -3912,7 +3995,11 @@ function renderBPanel(){
   } else slotsH = [b.broken ? repairB : lvlB, moveB, demB];
   if (d.herd && S.herd){
     const cc = cowCost(), room = S.herd.length < cowCap();
-    slotsH.push(B('buyCow', room ? L('牛を迎える','Buy a cow')+' '+fmt(cc)+'G' : L('牛 満員','Herd full'), room && S.gold >= cc, true), B('bell', L('鐘を移す','Move bell'), true));
+    slotsH.push(B('buyCow', room ? L('牛を迎える','Buy a cow')+' '+fmt(cc)+'G' : L('牛 満員','Herd full'), room && S.gold >= cc, true));
+  }
+  if (b.type === 'bell'){
+    const dc = upgCost(UPGS.find(u => u.id === 'dog'), S.upg.dog || 0);
+    slotsH = [B('bell', L('移動（無料）','Move (free)'), true, true), dc === undefined ? B('bell', L('牧羊犬が番中','Dog on watch'), false) : B('upg:dog', L('牧羊犬 ','Sheepdog ')+fmt(dc)+'G', S.gold >= dc), B('demolish', L('撤去','Demolish'), countB('bell') > 1)];
   }
   const btns = slotsH.join('');
   let look = '';
@@ -3924,7 +4011,7 @@ function renderBPanel(){
       '<div class="row"><span class="grow">'+L('屋根の色','Roof color')+' <span class="swatch" style="background:#'+HOUSE_ROOFS[lk.r].toString(16).padStart(6,'0')+'"></span></span>'+lb('r')+'</div>';
   }
   const extra = (!S.idle && pop() >= housing() && staffed(d)) ? '<div class="kv r">'+L('家が満員：住宅を建てると雇える','Houses full: build a House to hire')+'</div>' : '';
-  setHTML(bpanelEl, '<div class="ph"><span>'+N(d.n)+' Lv'+b.lvl+'</span><button class="btn x" data-act="unselect">×</button></div><div class="kv">'+N(d.d)+'<br>'+Lst.join('<br>')+'</div>'+look+'<div class="bgrid">'+btns+'</div>'+extra, 'b');
+  setHTML(bpanelEl, '<div class="ph"><span>'+N(d.n)+(b.type === 'bell' ? '' : ' Lv'+b.lvl)+'</span><button class="btn x" data-act="unselect">×</button></div><div class="kv">'+N(d.d)+'<br>'+Lst.join('<br>')+'</div>'+look+'<div class="bgrid">'+btns+'</div>'+extra, 'b');
 }
 // ボタン操作：指を離したとき、ほとんど動いていなければ押したことにする（パネルのスクロールと区別）
 let press = null;
@@ -3947,6 +4034,7 @@ function buyUpg(id){
   else toast(N(u.tiers ? u.tiers[lv][0] : u.n)+(u.cost.length > 1 && !u.tiers ? ' Lv'+(lv+1) : '')+L(' を手に入れた！',' acquired!'), 'good');
   sfx('fanfare');
   if (id === 'road') updatePaths();
+  if (id === 'dog') for (const i of allB('bell')) setCellMesh(i);
   return true;
 }
 function doAct(actStr, el){
@@ -3975,7 +4063,7 @@ function doAct(actStr, el){
     case 'fireWH': removeWorker(WH); break;
     case 'lvlWH': levelUp(WH); break;
     case 'lvl': levelUp(selCell); break;
-    case 'move': startMode({kind:'move', from:selCell}); break;
+    case 'move': startMode({kind:isB(selCell, 'bell') ? 'bell' : 'move', from:selCell}); break;
     case 'look': changeLook(selCell, arg); break;
     case 'repair': { const b = S.cells[selCell].b, rc = Math.round(BUILD[b.type].cost.g*0.4); if (S.gold >= rc){ S.gold -= rc; b.broken = false; CM[selCell].rotation.z = 0; sfx('build'); } break; }
     case 'demolish': demolish(selCell); break;
@@ -3996,7 +4084,7 @@ function doAct(actStr, el){
     case 'plant': if (isFarm && CROPS[arg] && selCell >= 0 && useTool(arg, selCell)){ pending = -1; startMode({kind:'tool', tool:arg}); } break;
     case 'clearPlot': if (isFarm && selCell >= 0){ useTool('clear', selCell); } break;
     case 'tool': if (isFarm && (arg === 'clear' || CROPS[arg])) startMode({kind:'tool', tool:arg}); break;
-    case 'bell': if (isDairy){ if (mode?.kind === 'bell') cancelMode(); else startMode({kind:'bell'}); } break;
+    case 'bell': if (isDairy && selCell >= 0 && isB(selCell, 'bell')) startMode({kind:'bell', from:selCell}); break;
     case 'buyCow': buyCow(selCell); break;
     case 'travelMenu': showTravel(arg); return;
     case 'travel': travel(arg); return;
@@ -4032,11 +4120,10 @@ function applySettings(){
   lastPanelHTML = ''; lastBHTML = '';
 }
 function herdLine(){
-  const full = S.herd.filter(isFull).length, n = pastureAt(S.bell);
+  const full = S.herd.filter(isFull).length, n = pastureAll();
   return L('牛 ','Cows ')+S.herd.length+(full ? L('（搾れる '+full+'）',' ('+full+' ready)') : '')+'・'+'<span class="'+(n ? 'g' : 'r')+'">'+(n ? L('輪の草 ','Grass in ring ')+n : L('鐘を移そう','Move the bell'))+'</span>';
 }
 function renderTop(){
-  if (isDairy){ const bb = $('#bellBtn'); bb.hidden = false; bb.textContent = L('鐘で放牧','Herd bell'); bb.classList.toggle('pulse', !!S.herd && !isNight() && !pastureAt(S.bell)); }
   $('#gold').textContent = fmt(S.gold);
   // 上のバーが何段になっても、その下に注文バー・回転ボタンを置く
   const tb = $('#top').offsetHeight + 14;
@@ -4064,7 +4151,7 @@ function renderTop(){
     S.loans.map(Ln=>'<div class="mis">💰 '+L('返済','Repay')+' '+fmt(Ln.repay)+'G　Day'+Ln.due+'<div class="bars">'+tbar(Ln.start ?? now, Ln.due)+'</div></div>').join(''));
   // チュートリアル
   const tutEl = $('#tut');
-  document.querySelectorAll('.pulse:not(#bellBtn)').forEach(e=>e.classList.remove('pulse'));
+  document.querySelectorAll('.pulse').forEach(e=>e.classList.remove('pulse'));
   if (S.tut >= 0 && TUT[S.tut]){
     let msg = N(TUT[S.tut].m);
     if (S.tut === 6 && countB('sawmill') && workerCount() >= housing()) msg = L('住む家が満員で雇えない！<b>住宅</b>を建てるか、木こり小屋の住民を<b>減らそう</b>。','No room to hire! Build a <b>House</b> or <b>remove</b> a worker from the camp.');
@@ -4089,7 +4176,7 @@ function toast(msg, cls=''){
   setTimeout(()=>el.remove(), 4500);
 }
 // 建物の看板アイコン（UIの下に表示。チュートリアル中だけ／設定で変更）
-const ICONS = {warehouse:'💰', camp:'🌲', quarry:'⛏️', sawmill:'🔨', workshop:'🛋️', bakery:'🍞', forester:'🌱', smelter:'🔥', factory:'⚙️', house:'🏠', park:'🌷', bath:'♨️', fun:'🎡', recycle:'♻️', mower:'🌾', saltpit:'🧂', seeder:'🌱', barn:'🐄', churn:'🧈', creamery:'🧀', cellar:'🏺', farmhut:'🌾', windmill:'🌀', picklery:'🎃', patisserie:'🍰', brewery:'🍶'};
+const ICONS = {warehouse:'💰', bell:'🔔', camp:'🌲', quarry:'⛏️', sawmill:'🔨', workshop:'🛋️', bakery:'🍞', forester:'🌱', smelter:'🔥', factory:'⚙️', house:'🏠', park:'🌷', bath:'♨️', fun:'🎡', recycle:'♻️', mower:'🌾', saltpit:'🧂', seeder:'🌱', barn:'🐄', churn:'🧈', creamery:'🧀', cellar:'🏺', farmhut:'🌾', windmill:'🌀', picklery:'🎃', patisserie:'🍰', brewery:'🍶'};
 const badgeEls = {};
 function updateBadges(){
   const box = $('#badges'), mode2 = SET.icons === 'auto' ? (S.tut >= 0 ? 'on' : 'off') : SET.icons;
@@ -4458,8 +4545,8 @@ function farmGuide(){
 }
 function dairyGuide(){
   return '<p class="kv">'+L(
-    '<b>この島は放牧で育てる</b><br>・<b>鐘</b>のまわり5×5マスの草を、牛が自分で食べに行く<br>・乳が張った牛（白いしずく）は<b>タップで搾れる</b>。<b>牛舎</b>を建てて雇えば任せられる<br>・輪の中では草が生えない。<b>鐘を移して休ませると、食べ跡がクローバーに</b>（乳が2倍濃い）<br>・草のない場所に居座ると<b>泥地</b>になる<br>・干し草は夜と草不足のときのエサ。牛舎に運ばれる<br>・加工所を建てるには<b>岩塩</b>（ピンクの岩）がいる。目標は <b>'+fmt(P.goal)+'G</b>',
-    '<b>This island runs on grazing</b><br>• Cows graze the 5×5 around the <b>bell</b> by themselves<br>• <b>Tap a cow with a white drop to milk it</b>, or build and staff a <b>Cow Barn</b><br>• Nothing regrows inside the ring. <b>Move the bell to rest the pasture and it returns as clover</b> (twice as rich)<br>• Lingering on bare ground turns it to <b>mud</b><br>• Hay is feed for nights and lean times, hauled to barns<br>• Workshops take <b>rock salt</b> (the pink rocks) to build. Goal: <b>'+fmt(P.goal)+'G</b>')+'</p>';
+    '<b>この島は放牧で育てる</b><br>・<b>鐘</b>のまわり5×5マスの草を、牛が自分で食べに行く。鐘は<b>タップして移動（無料）</b>、建設の「資源」で増やせる<br>・乳が張った牛（白いしずく）は<b>タップで搾れる</b>。<b>牛舎</b>を建てて雇えば任せられる<br>・輪の中では草が生えない。<b>鐘を移して休ませると、食べ跡がクローバーに</b>（乳が2倍濃い）<br>・草のない場所に居座ると<b>泥地</b>になる<br>・干し草は夜と草不足のときのエサ。牛舎に運ばれる<br>・加工所を建てるには<b>岩塩</b>（ピンクの岩）がいる。目標は <b>'+fmt(P.goal)+'G</b>',
+    '<b>This island runs on grazing</b><br>• Cows graze the 5×5 around the <b>bell</b> by themselves. <b>Tap a bell to move it (free)</b>, or build more under Resources<br>• <b>Tap a cow with a white drop to milk it</b>, or build and staff a <b>Cow Barn</b><br>• Nothing regrows inside the ring. <b>Move the bell to rest the pasture and it returns as clover</b> (twice as rich)<br>• Lingering on bare ground turns it to <b>mud</b><br>• Hay is feed for nights and lean times, hauled to barns<br>• Workshops take <b>rock salt</b> (the pink rocks) to build. Goal: <b>'+fmt(P.goal)+'G</b>')+'</p>';
 }
 addEventListener('beforeunload', save);
 // スマホは beforeunload が来ないことが多い
@@ -4679,6 +4766,7 @@ function visitState(){
   });
   if (ISLAND === 'dairy'){
     s.bell = s.cells[V.bell].t === 'void' ? WH : V.bell; s.soil = {}; s.herd = [];
+    ensureBell(s, s.bell);
     const bp = wpos(s.bell);
     for (let k=0;k<V.cows;k++){ const a = k*2.4, r = 0.7 + (k%4)*0.45; s.herd.push({name:k % COW_NAMES.length, x:clamp(bp.x + Math.cos(a)*r, -5, 5), z:clamp(bp.z + Math.sin(a)*r, -5, 5), face:a, belly:k%5, load:0, total:0, tgt:-1, wait:-1, t:0, eating:k%2 === 0}); }
   }
@@ -5013,6 +5101,7 @@ const grazingIsNew = !VISIT && initHerd();
 if (!S.funPending && allB('fun').length) S.funOpened = 1;
 if (S.driveV !== 2){ S.drive = [0,1,1,2][S.drive || 0]; S.driveV = 2; }          // 4段階だったころの経営方針
 if (isFarm){ S.upg.pump ??= 0; calcFlow(); }
+refreshBells();
 initWorld();
 if (isFarm && !VISIT) migrateRiver();
 if (isFarm) calcTraffic();
@@ -5037,7 +5126,7 @@ window.DTT = {get S(){return S;}, P, W, WH, place, hire, levelUp, sell, clickCel
   visitURL, showShare, get shareBlob(){return shareBlob;}, VISIT,
   traffic, calcTraffic, trampleRate,
   useTool, toolWhy, growRate, season, refreshWater, isWet, CROPS, get waterLive(){return waterLive;},
-  setBell, milkByHand, buyCow, cowCost, cowCap, pastureAt, isMud,
+  setBell:(i, k=0) => setBell(i, false, bellList[k]), get bells(){ return bellList; }, critters, milkByHand, buyCow, cowCost, cowCap, pastureAt, isMud,
   festActive, showFestStill, get festHeard(){return festHeard;},
   demolish, setDrive, updatePaths, regroup, entryOf, nodePt, strollers, razes, postMesh, pathMesh, get socialEdges(){return socialEdges;},
   ISL, ISLAND, BUILD, ITEMS, travel, save, showEnding, showTravel, pop, housing,
