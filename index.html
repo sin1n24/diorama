@@ -79,6 +79,7 @@ button{font:inherit;color:inherit;cursor:pointer}
 #rot .btn{font-size:20px;padding:6px 12px}
 #confirm{position:absolute;left:50%;bottom:64px;transform:translateX(-50%);display:none;gap:8px;padding:6px 10px;align-items:center}
 #confirm .btn{font-size:16px;padding:8px 14px}
+#confirmTxt{white-space:nowrap}
 .scroll{touch-action:pan-y;-webkit-overflow-scrolling:touch}
 #panel{position:absolute;left:50%;bottom:62px;transform:translateX(-50%);width:min(560px,calc(100vw - 32px));max-height:50vh;overflow:auto;padding:10px}
 #bpanel{position:absolute;left:8px;top:96px;width:min(300px,calc(100vw - 32px));padding:10px;max-height:calc(100vh - 180px);overflow:auto}
@@ -102,6 +103,8 @@ button{font:inherit;color:inherit;cursor:pointer}
 .seg .btn{padding:4px 8px;font-size:13px}
 .swatch{display:inline-block;width:14px;height:14px;border:2px solid var(--paper);vertical-align:middle}
 #tip{position:absolute;padding:6px 8px;font-size:13px;line-height:1.45;pointer-events:none;max-width:260px;display:none}
+#bellBtn{position:absolute;left:8px;bottom:62px;font-size:16px;padding:8px 14px}
+#bellBtn:not([hidden]) ~ #toasts{bottom:112px}
 #toasts{position:absolute;left:8px;bottom:62px;display:flex;flex-direction:column;gap:4px;pointer-events:none;max-width:min(360px,calc(100vw - 32px))}
 .toast{background:rgba(27,31,58,.92);border:2px solid var(--paper);padding:4px 8px;font-size:13px;animation:tin .15s steps(3)}
 .toast.good{border-color:var(--ok)} .toast.bad{border-color:var(--ng)} .toast.ev{border-color:var(--hi)}
@@ -121,7 +124,9 @@ button{font:inherit;color:inherit;cursor:pointer}
 @media (max-width:700px){
   html,body{font-size:13px}
   #side{top:auto;bottom:62px;width:200px}
-  #toasts{bottom:auto;top:130px}
+  #toasts,#bellBtn:not([hidden]) ~ #toasts{bottom:auto;top:130px}
+  #bellBtn{font-size:13px}
+  body.placing #bellBtn, body.panel-open #bellBtn{display:none}
   #bottom .btn{font-size:13px;padding:7px 9px}
   #goldChip{font-size:15px}
   #bpanel{top:auto;bottom:62px;left:8px;right:8px;width:auto;max-height:46vh}
@@ -161,6 +166,7 @@ button{font:inherit;color:inherit;cursor:pointer}
     <button class="btn" data-act="panel:market" id="btnMarket"></button>
     <button class="btn" data-act="panel:area" id="btnArea"></button>
   </div>
+  <button class="btn hot" id="bellBtn" data-act="bell" hidden></button>
   <div id="toasts"></div>
   <div id="tip" class="px"></div>
   <div id="modal" hidden><div class="mbox px scroll"></div></div>
