@@ -447,7 +447,9 @@ function updateTiles(){
 
 // 自動でできる細い道：住民が実際に歩いた「まっすぐなルート」が、よく通るほど濃く太くなる
 const ROUTE_MAX = 240;
-const pathMesh = new THREE.InstancedMesh(new THREE.BoxGeometry(1,0.02,1), MT(0xffffff), ROUTE_MAX);
+const PATH_PIECES = 700, PATH_Y = 0.002;          // 道は地面のすぐ上＝ほかのどの物よりも下
+const pathMesh = new THREE.InstancedMesh(new THREE.BoxGeometry(1,0.002,1), MT(0xffffff), PATH_PIECES);
+pathMesh.frustumCulled = false;
 pathMesh.receiveShadow = true; pathMesh.count = 0; scene.add(pathMesh);
 const PATH_C = new THREE.Color(0xcfb27a), PAVE_C = new THREE.Color(0xb3afa8);
 const q2 = v => Math.round(v*2)/2;
@@ -463,10 +465,16 @@ function wearRoute(key, len, dt){ S.routes[key] = Math.min(1, (S.routes[key] || 
 // となり合う同じ種類の建物はひとかたまり：道の入口は市場にいちばん近い1つだけ。中は建物づたいに歩く
 let entryMap = {};
 const entryOf = i => entryMap[i] ?? i;
-function nodePt(i){ return i === WH ? whPt({ox:0}) : S.cells[i].t === 'b' ? bPt(i, {ox:0}) : wpos(i); }
+function nodePt(i){ return S.cells[i].t === 'b' ? bCenter(i) : wpos(i); }          // 道の端は建物の中心
+// 人が歩くのは道の上。ただし建物の中までは入らず、手前で止まる
+function roadEnd(p, q, i){
+  if (i !== undefined && S.cells[i].t !== 'b') return {x:p.x, z:p.z};
+  const d = Math.hypot(q.x - p.x, q.z - p.z), k = Math.min(0.46*(i === undefined ? 1 : bSize(i)), d*0.4) / (d || 1);
+  return {x:p.x + (q.x - p.x)*k, z:p.z + (q.z - p.z)*k};
+}
 function regroup(){
   entryMap = {};
-  const seen = new Set(), m = whPt({ox:0}), far = i => { const p = bPt(i, {ox:0}); return Math.hypot(p.x - m.x, p.z - m.z); };
+  const seen = new Set(), m = wpos(WH), far = i => { const p = bCenter(i); return Math.hypot(p.x - m.x, p.z - m.z); };
   for (const i of allB()){
     if (i === WH || seen.has(i)) continue;
     const type = S.cells[i].b.type, grp = [i]; seen.add(i);
@@ -525,22 +533,35 @@ postGlow.setColorAt(0, new THREE.Color(0xffc870));
 const GRASS_C = TILE_A.clone().lerp(TILE_B, 0.5);
 function updatePaths(){
   const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0,1,0), sc = new THREE.Vector3(), ps = new THREE.Vector3(), col = new THREE.Color(), glow = new THREE.Color(0xffc870);
-  let n = 0; const posts = [];
+  let n = 0, rk = 0; const posts = [], ground = isFarm ? SEASON_TILE[season()][0] : GRASS_C;
+  // 作物と水の上：そこだけ線を切る（下にもぐって見える）
+  const under = (x, z) => { if (Math.abs(x) >= W/2 || Math.abs(z) >= W/2) return false; const c = S.cells[cellAt(x, z)]; return !!c.crop || c.t === 'water'; };
   for (const k in S.routes){
-    const wv = S.routes[k]; if (wv < 0.14 || n >= ROUTE_MAX) continue;
+    const wv = S.routes[k]; if (wv < 0.14 || n >= PATH_PIECES) continue;
     const [x1, z1, x2, z2] = k.split(',').map(Number), dx = x2 - x1, dz = z2 - z1, len = Math.hypot(dx, dz);
     if (len < 1.45) continue;                                  // となり同士の短い線は描かない（塗りつぶしたようになるため）
     const vis = clamp((wv - 0.14)/0.3, 0, 1), paved = S.upg.road && wv > 0.45;
     q.setFromAxisAngle(up, Math.atan2(dx, dz));
-    sc.set((0.035 + Math.min(0.075, wv*0.075)) * Math.min(1, len/2.5), 1, len + 0.03);
-    ps.set((x1+x2)/2, 0.01 + (n%6)*0.0015, (z1+z2)/2);
-    m4.compose(ps, q, sc); pathMesh.setMatrixAt(n, m4);
-    col.copy(GRASS_C).lerp(paved ? PAVE_C : PATH_C, vis); pathMesh.setColorAt(n, col); n++;
+    col.copy(ground).lerp(paved ? PAVE_C : PATH_C, vis);
+    const width = (0.035 + Math.min(0.075, wv*0.075)) * Math.min(1, len/2.5), y = PATH_Y + (rk++ % 6)*0.0005, steps = Math.ceil(len/0.05);
+    let from = -1;
+    for (let j=0; j<=steps; j++){
+      const t = (j + 0.5)/steps, open = j < steps && !under(x1 + dx*t, z1 + dz*t);
+      if (open && from < 0) from = j/steps;
+      if (open || from < 0) continue;
+      const to = j/steps, mid = (from + to)/2, piece = (to - from)*len;
+      if (piece > 0.1 && n < PATH_PIECES){
+        sc.set(width, 1, piece); ps.set(x1 + dx*mid, y, z1 + dz*mid);
+        m4.compose(ps, q, sc); pathMesh.setMatrixAt(n, m4); pathMesh.setColorAt(n, col); n++;
+      }
+      from = -1;
+    }
     if (S.upg.road < 2 || !paved) continue;
     const num = Math.max(1, Math.floor(len/1.5));
     for (let j=0; j<num && posts.length < POST_MAX; j++) for (const side of [1,-1]){
       const t = (j+0.5)/num, x = x1 + dx*t + dz/len*0.2*side, z = z1 + dz*t - dx/len*0.2*side;
-      if (Math.abs(x) >= W/2 || Math.abs(z) >= W/2 || !['grass','sapling'].includes(S.cells[cellAt(x, z)].t)) continue;
+      if (Math.abs(x) >= W/2 || Math.abs(z) >= W/2) continue;
+      const pc = S.cells[cellAt(x, z)]; if (pc.crop || (pc.t !== 'grass' && pc.t !== 'sapling')) continue;
       if (!posts.some(([a, b]) => Math.hypot(a-x, b-z) < 1.2)) posts.push([x, z]);
       break;
     }
@@ -1224,6 +1245,13 @@ const hourOf = t => { const d = P.dayLen*P.dayFrac; return t < d ? 5 + 14*t/d : 
 const isNight = () => { const h = hourOf(S.time); return h >= 19.25 || h < 5.5; };
 const workTime = () => (!isNight() || (S.nightShift && S.meteorNight !== S.day)) && S.flags.holidayDay !== S.day && S.strikeDay !== S.day;
 const festActive = () => S.festDay === S.day && hourOf(S.time) >= 17;
+const FEST_STILL_AFTER = 8;          // 祭りばやしが流れてから絵が出るまで（実時間の秒）
+let festHeard = 0;
+function showFestStill(){
+  if (!S.festStill) return;
+  S.festStill = 0; festHeard = 0;
+  eventQueue.unshift({result:true, quiet:true, img:'festival_go', title:L('収穫祭、たけなわ！','The festival is in full swing!'), text:L('祭りばやしに合わせて、みんなが輪になって踊っている。空には花火も上がった。','Everyone dances in a ring to the music while fireworks burst overhead.')});
+}
 const holidayNow = () => S.flags.holidayDay === S.day && !isNight();
 const starWatch = () => S.meteorNight === S.day && isNight() && hourOf(S.time) >= 19 && hourOf(S.time) < 23.5;   // 流れ星の夜はみんなで広場から空を見る
 const moodF = () => (0.5 + S.mood/100) * (S.boostDay === S.day ? 1.4 : 1);
@@ -1469,6 +1497,7 @@ const ironWanted = () => Object.entries(BUILD).some(([k, d]) => !d.hidden && isl
 function plan(w){
   const c = S.cells[w.bi]; if (!c || c.t !== 'b') return [{k:'wait', d:1}];
   const b = c.b;
+  if (festActive() && w.job === 'haul' && S.upg.carry >= 2) return [...upIf(w), {k:'parade'}];          // 荷車は踊らず、輪の外をゆっくり回る
   if (festActive()){ const a = Math.random()*Math.PI*2, r = 0.5 + Math.random()*0.4; return [...upIf(w), {k:'go', x:PLAZA.x + Math.cos(a)*r, z:PLAZA.z + Math.sin(a)*r}, {k:'dance', d:rnd(3,6)}]; }
   if (starWatch()){ const a = Math.random()*Math.PI*2, r = 0.6 + Math.random()*0.9; return [...upIf(w), {k:'go', x:PLAZA.x + Math.cos(a)*r, z:PLAZA.z + Math.sin(a)*r}, {k:'dance', d:rnd(5,9), calm:true, star:true}]; }
   if (holidayNow()){ const land = S.cells.map((c,i)=>c.t==='void'||c.t==='water'||c.t==='b'||c.t==='occ'?-1:i).filter(i=>i>=0), p = wpos(land[Math.floor(Math.random()*land.length)]); return [...upIf(w), {k:'go', x:p.x + rnd(-.3,.3), z:p.z + rnd(-.3,.3)}, {k:'dance', d:rnd(2,4), calm:true}]; }
@@ -1502,6 +1531,22 @@ function plan(w){
 function idleAt(w, d){
   const r = [w.job === 'haul' ? goWH(w) : goB(w.bi, w), {k:'wait', d, in:true}];
   return Math.random() < 0.18 ? [...r, {k:'go', ...outPt(w)}, {k:'wait', d:rnd(0.8,1.8)}] : r;
+}
+// 祭りの荷車：踊りの輪の外を周回。建物のある方角では半径を変えてよける
+const PARADE_R = [1.6, 1.4, 1.25, 1.9];
+function paradePt(a){
+  const N0 = 24, u = ((a / (Math.PI*2)) % 1 + 1) % 1 * N0, k = Math.floor(u), f = u - k;
+  const radius = j => {
+    const an = j/N0*Math.PI*2;
+    for (const r of PARADE_R){
+      const x = PLAZA.x + Math.cos(an)*r, z = PLAZA.z + Math.sin(an)*r*0.82;
+      if (Math.abs(x) >= W/2 || Math.abs(z) >= W/2) continue;
+      if (!['b','occ','void','water','rock'].includes(S.cells[cellAt(x, z)].t)) return r;
+    }
+    return 1.3;
+  };
+  const r = radius(k)*(1-f) + radius((k+1) % N0)*f;
+  return {x:PLAZA.x + Math.cos(a)*r, z:PLAZA.z + Math.sin(a)*r*0.82};
 }
 // ちょっとした用事の行き先：となりの空きマスか、近所の建物の戸口
 function outPt(w){
@@ -1552,7 +1597,7 @@ function updateWorker(w, dt){
   if (!w.tasks.length) w.tasks = plan(w);
   const t = w.tasks[0]; if (!t) return;
   // 帰る時間になったら、手ぶらなら作業を切り上げて家へ
-  if (!t.home && t.k !== 'sleep' && t.k !== 'dance' && !w.carry && offDuty(w) && !festActive() && !holidayNow() && !starWatch()){ if (t.k === 'go') w.at = undefined; release(w); w.tasks = []; return; }
+  if (!t.home && t.k !== 'sleep' && t.k !== 'dance' && t.k !== 'parade' && !w.carry && offDuty(w) && !festActive() && !holidayNow() && !starWatch()){ if (t.k === 'go') w.at = undefined; release(w); w.tasks = []; return; }
   const cb = S.cells[w.bi]; if (cb.t !== 'b'){ w.tasks = []; return; }
   const b = cb.b;
   // 建物の中にいるか（go は実際に歩きだしたときに外へ出る。その場への go で一瞬だけ見えることがないように）
@@ -1565,12 +1610,13 @@ function updateWorker(w, dt){
         if (w.at !== undefined && t.at !== undefined){
           const A = entryOf(w.at), B = entryOf(t.at);
           if (A !== B){
-            const a = nodePt(A), c = nodePt(B), key = routeKey(a.x, a.z, c.x, c.z), len = Math.hypot(a.x - c.x, a.z - c.z), legs = [];
-            if (w.at !== A) legs.push({...t, x:a.x, z:a.z, at:A});
+            const a = nodePt(A), c = nodePt(B), key = routeKey(a.x, a.z, c.x, c.z), len = Math.hypot(a.x - c.x, a.z - c.z);
             // 建物どうしの道はすぐ付く。木や岩への道は通い詰めたときだけ
             const wm = [A, B].some(n => ['tree','rock'].includes(S.cells[n].t)) ? 0.8 : 2;
-            if (t.at === B) legs.push({...t, key, len, wm});
-            else legs.push({...t, x:c.x, z:c.z, at:B, key, len, wm}, {...t});
+            const legs = [], on = roadEnd(a, c, A), off = roadEnd(c, a, B);
+            if (S.cells[A].t === 'b') legs.push({...t, ...on, at:A});
+            if (S.cells[B].t === 'b') legs.push({...t, ...off, at:B, key, len, wm}, {...t});
+            else legs.push({...t, key, len, wm});
             w.tasks.splice(0, 1, ...legs);
             break;
           }
@@ -1583,6 +1629,13 @@ function updateWorker(w, dt){
     case 'wait': t.d -= dt; if (t.d <= 0) w.tasks.shift(); break;
     case 'op': t.d -= dt; w.work = true; w.t += dt; if (t.d <= 0) w.tasks.shift(); break;
     case 'dance': t.d -= dt; w.dance = t.calm ? 1 : 2; if (Math.random() < dt*0.25) popAt(w.x, 0.7, w.z, t.star ? '☆' : '♪'); if (t.d <= 0) w.tasks.shift(); break;
+    case 'parade': {
+      if (!festActive()){ w.tasks = []; break; }
+      const cars = workers.filter(v => v.job === 'haul'), a = simNow()*0.45 + cars.indexOf(w)/Math.max(1, cars.length)*Math.PI*2;
+      const g = paradePt(a), dx = g.x - w.x, dz = g.z - w.z, d = Math.hypot(dx, dz), st = 1.6*dt;
+      w.at = undefined; w.dance = 3;
+      if (d > 1e-4){ const m = Math.min(d, st); w.x += dx/d*m; w.z += dz/d*m; w.walk += m*9; if (d > 0.004) w.face = Math.atan2(dx, dz); }
+      break; }
     case 'sleep': w.sleep = true; w.mesh.visible = false; w.tasks = []; break;
     case 'down': w.under = true; w.tasks.shift(); break;
     case 'up': { w.under = false; w.at = w.bi; const p = bPt(w.bi, w); w.x = p.x; w.z = p.z; w.tasks.shift(); break; }
@@ -2155,6 +2208,7 @@ function onDawn(){
   greenRescue();
   farmDawn();
   herdRescue();
+  if (S.festStill && S.festStill < S.day) showFestStill();          // 見そびれても朝には出す
   const NO = S.nightOrder;
   if (NO && S.day > NO.day){
     S.nightShift = NO.prev; S.nightOrder = null;
@@ -2364,8 +2418,8 @@ const EVENTS = [
     const cost = 80 + 30*workerCount();
     return {img:'festival', title:L('収穫祭をやりたい！','Let’s have a festival!'), text:L('住民たちが「たまには祭りで騒ぎたい」と言っている。今の幸福度は '+Math.round(S.mood)+'。','The residents want a harvest festival. Happiness is '+Math.round(S.mood)+'.'), opts:[
       {l:L('祭りを開く（'+fmt(cost)+'G）','Hold it ('+fmt(cost)+'G)'), d:L('幸福 +20。今夜は広場で踊りと花火（夕方から仕事は休み）','Happiness +20. Dancing and fireworks tonight (work stops at dusk)'), dis:()=>S.gold < cost, f:()=>{
-        S.gold -= cost; addMood(20); S.stats.festivals++; S.festDay = S.day; story('Day'+S.day+'、にぎやかな収穫祭を開いた','Held a lively harvest festival on day '+S.day);
-        return {img:'festival_go', title:L('今夜は収穫祭！','Festival tonight!'), text:L('夕方になったら、みんな広場に集まって踊りだす。夜空には花火も上がる。','At dusk everyone gathers in the square to dance, with fireworks in the sky.')}; }},
+        S.gold -= cost; addMood(20); S.stats.festivals++; S.festDay = S.day; S.festStill = S.day; festHeard = 0; story('Day'+S.day+'、にぎやかな収穫祭を開いた','Held a lively harvest festival on day '+S.day);
+        toast(L('今夜は収穫祭！ 夕方から広場で踊りと花火','Festival tonight! Dancing and fireworks from dusk'), 'good'); }},
       {l:L('今は働くとき','Keep working'), d:L('お金は残る。幸福 -6','Save the gold. Happiness -6'), f:()=>{ addMood(-6); }},
     ]};
   }},
@@ -2523,7 +2577,7 @@ let curEvent = null;
 function showEvent(E){
   const box = $('#modal .mbox');
   if (E.result){
-    sfx('fanfare');
+    if (!E.quiet) sfx('fanfare');
     box.innerHTML = gfix(evImg(E.img) + '<h2>'+E.title+'</h2><p>'+E.text+'</p><div class="opts"><button class="opt" data-act="closeModal"><div class="n">▶ '+L('つづける','Continue')+'</div></button></div>');
     curEvent = null; $('#modal').hidden = false; return;
   }
@@ -2535,7 +2589,7 @@ function showEvent(E){
 function chooseEvent(k){
   const E = curEvent; if (!E) return; const o = E.opts[k]; if (o.dis && o.dis()) return;
   const res = o.f(); S.doneEvents[E.id] = true; curEvent = null; $('#modal').hidden = true; sfx('ui');
-  if (res) eventQueue.unshift({result:true, ...res}); else toast('「'+o.l+'」','ev');
+  if (res) eventQueue.unshift({result:true, ...res}); else if (E.id !== 'festival' || S.festStill !== S.day) toast('「'+o.l+'」','ev');
 }
 
 /* =========================================================
@@ -2750,7 +2804,7 @@ function tourSpots(){
   const r = [];
   for (const i of allB('fun')) for (let k=0;k<3;k++) r.push(bCenter(i));
   for (const i of allB('park')) r.push(bCenter(i));
-  for (const i of [...allB('bakery'), ...allB('bath')]) r.push(bPt(i, {ox:0}));
+  for (const i of [...allB('bakery'), ...allB('bath')]) r.push({...bPt(i, {ox:0}), node:bCenter(i)});
   r.push(PLAZA);
   return r;
 }
@@ -2775,7 +2829,7 @@ function updateTourists(dt){
       if (Ln <= st){ T.x = tg.x; T.z = tg.z; T.from = tg.node || tg; T.path.shift(); T.key = undefined; if (!T.path.length) T.wait = T.back ? 0 : rnd(3, 7); }
       else { T.x += dx/Ln*st; T.z += dz/Ln*st; T.m.rotation.y = Math.atan2(dx, dz); T.ph += dt*14; mv = true; if (T.key) wearRoute(T.key, T.len, dt*0.6); }
     } else if (T.back){ scene.remove(T.m); tourists.splice(q, 1); continue; }
-    else { const sp = tourSpots(), p = sp[Math.floor(Math.random()*sp.length)]; T.path = [{x:p.x + rnd(-.35,.35), z:p.z + rnd(-.35,.35), node:p}]; }
+    else { const sp = tourSpots(), p = sp[Math.floor(Math.random()*sp.length)]; T.path = [{x:p.x + rnd(-.35,.35), z:p.z + rnd(-.35,.35), node:p.node || p}]; }
     const bob = mv ? Math.abs(Math.sin(T.ph))*0.035 : 0;
     u.body.position.y = 0.13 + bob; u.head.position.y = 0.27 + bob; u.hat.position.y = 0.35 + bob;
     u.legL.position.z = mv ? Math.sin(T.ph)*0.035 : 0; u.legR.position.z = -u.legL.position.z;
@@ -2792,7 +2846,7 @@ function updateStrollers(dt){
   strollT -= dt;
   if (strollers.length < want && strollT <= 0){
     strollT = 0.9;
-    const e = es[Math.floor(Math.random()*es.length)], [a, b] = Math.random() < 0.5 ? [e.p, e.q] : [e.q, e.p];
+    const e = es[Math.floor(Math.random()*es.length)], ends = [roadEnd(e.p, e.q), roadEnd(e.q, e.p)], [a, b] = Math.random() < 0.5 ? ends : [ends[1], ends[0]];
     const m = makeWorkerMesh('tour'), u = m.userData;
     if (night){ u.carry.material = lampMat(0xffd070); u.carry.scale.set(0.09,0.11,0.09); u.carry.position.set(0.12,0.14,0.05); u.carry.visible = true; }
     scene.add(m); strollers.push({m, x:a.x, z:a.z, path:[b, a], wait:0, ph:Math.random()*6, night, sp:rnd(0.6,0.85)});
@@ -3499,7 +3553,7 @@ function renderTop(){
     S.loans.map(Ln=>'<div class="mis">💰 '+L('返済','Repay')+' '+fmt(Ln.repay)+'G　Day'+Ln.due+'<div class="bars">'+tbar(Ln.start ?? now, Ln.due)+'</div></div>').join(''));
   // チュートリアル
   const tutEl = $('#tut');
-  document.querySelectorAll('.pulse').forEach(e=>e.classList.remove('pulse'));
+  document.querySelectorAll('.pulse:not(#farmBtn):not(#bellBtn)').forEach(e=>e.classList.remove('pulse'));
   if (S.tut >= 0 && TUT[S.tut]){
     let msg = N(TUT[S.tut].m);
     if (S.tut === 6 && countB('sawmill') && workerCount() >= housing()) msg = L('住む家が満員で雇えない！<b>住宅</b>を建てるか、木こり小屋の住民を<b>減らそう</b>。','No room to hire! Build a <b>House</b> or <b>remove</b> a worker from the camp.');
@@ -3741,6 +3795,7 @@ function fixFootprints(){
   for (let i=0;i<W*W;i++){ const c = S.cells[i]; if (c.t === 'occ' && (S.cells[c.of]?.t !== 'b' || !footCells(c.of, bSize(c.of)).includes(i))) S.cells[i] = {t:'grass', r:Math.random()}; }
 }
 function initWorld(){
+  if (S.routeV !== 2){ S.routes = {}; S.routeV = 2; }          // 道の端が「戸口」だったころの線は引き継がない
   fixFootprints();
   for (let i=0;i<W*W;i++) setCellMesh(i);
   for (const w of workers.splice(0)) scene.remove(w.mesh);
@@ -3929,9 +3984,10 @@ function frame(now){
     m.visible = !w.sleep && !w.inside;
     if (!m.visible) continue;
     m.position.set(w.x, w.dance === 2 ? Math.abs(Math.sin(elapsed*8 + w.ox*20))*0.12 : 0, w.z);
-    if (w.dance === 2) w.face += dt*4;
-    m.rotation.y += ((w.face - m.rotation.y + Math.PI*3) % (Math.PI*2) - Math.PI) * Math.min(1, dt*14);
-    const moving = w.tasks[0]?.k === 'go', bob = moving ? Math.abs(Math.sin(w.walk))*0.035 : 0;
+    if (w.dance === 2) w.face = (w.face + dt*4) % (Math.PI*2);
+    const turn = (((w.face - m.rotation.y) % (Math.PI*2)) + Math.PI*3) % (Math.PI*2) - Math.PI;          // 近い方へ向きを変える
+    m.rotation.y += turn * Math.min(1, dt*(w.dance === 3 ? 5 : 14));
+    const moving = w.tasks[0]?.k === 'go' || w.tasks[0]?.k === 'parade', bob = moving ? Math.abs(Math.sin(w.walk))*0.035 : 0;
     u.body.position.y = 0.13 + bob; u.head.position.y = 0.27 + bob; u.hat.position.y = 0.35 + bob; u.carry.position.y = 0.43 + bob;
     u.legL.position.z = moving ? Math.sin(w.walk)*0.035 : 0; u.legR.position.z = -u.legL.position.z;
     u.body.rotation.x = w.work ? Math.max(0, Math.sin(w.t*9))*0.6 : 0;
@@ -3971,7 +4027,8 @@ function frame(now){
     festLight.position.set(PLAZA.x, 0.5, PLAZA.z); festLight.intensity = 2.6 + Math.sin(elapsed*13)*0.5;
     if (!bonfire.visible){ bonfire.visible = true; bonfire.position.set(PLAZA.x, 0, PLAZA.z); }
     if (nightAmt > 0.3 && wdt){ fwAcc += dt; if (fwAcc > 1.1){ fwAcc = 0; firework(); } }
-    if (wdt) musicTick();
+    if (wdt || !curEvent) musicTick();          // 絵が出ているあいだも祭りばやしは続く
+    if (wdt && S.festStill === S.day){ festHeard += dt; if ((festHeard >= FEST_STILL_AFTER && nightAmt > 0.5) || hourOf(S.time) >= 27.5) showFestStill(); }
   } else if (bonfire.visible){ bonfire.visible = false; festLight.intensity = 0; }
   updateFarm(dt); updateBell(dt); updateRaze(dt); updateDrive(); updateStrollers(wdt ? dt*Math.min(4, S.speed) : 0);
   updateFx(wdt ? dt : 0); updatePops(dt); updateAirship(dt, elapsed); updateCritters(wdt ? dt : 0); updateBadges(); updateAlerts(); updateTourists(wdt ? dt*Math.min(4, S.speed) : 0);
@@ -4309,6 +4366,7 @@ window.DTT = {get S(){return S;}, P, W, WH, place, hire, levelUp, sell, clickCel
   visitURL, showShare, get shareBlob(){return shareBlob;}, VISIT,
   useTool, toolWhy, growRate, flowCap, season, refreshWater, isWet, CROPS, get waterLive(){return waterLive;},
   setBell, milkByHand, buyCow, cowCost, cowCap, pastureAt, isMud,
+  festActive, showFestStill, get festHeard(){return festHeard;},
   demolish, setDrive, updatePaths, regroup, entryOf, nodePt, strollers, razes, postMesh, pathMesh, get socialEdges(){return socialEdges;},
   ISL, ISLAND, BUILD, ITEMS, travel, save, showEnding, showTravel, pop, housing,
   get trade(){return trade;}, tourists, backups, airPhase, get airship(){return airship;}, camS, buildDock, buildAirship, updateTiles, moodBreakdown, offDuty, whale, get mode(){return mode;}, setLang:(l)=>{SET.lang=l; applySettings(); renderTop();}};
