@@ -103,7 +103,14 @@ button{font:inherit;color:inherit;cursor:pointer}
 .seg .btn{padding:4px 8px;font-size:13px}
 .swatch{display:inline-block;width:14px;height:14px;border:2px solid var(--paper);vertical-align:middle}
 #tip{position:absolute;padding:6px 8px;font-size:13px;line-height:1.45;pointer-events:none;max-width:260px;display:none}
-#shareBtn{min-width:4.6em}
+#shareBtn,#scoreBtn{min-width:4.6em}
+.rankimg{display:block;width:100%;aspect-ratio:16/9;max-height:36vh;object-fit:contain;image-rendering:pixelated;margin:8px 0 4px}
+.scorehead{display:flex;align-items:center;gap:12px;margin:4px 0 6px;line-height:1.35}
+.scorehead b{font-size:24px;color:var(--hi);font-weight:normal}
+.rk{flex:none;font-size:44px;line-height:56px;width:58px;text-align:center;border:3px solid currentColor}
+.rkS{color:#ffe070;background:#4a2a70}.rkA{color:#ffc860;background:#6a3a30}.rkB{color:#d0e4f4;background:#28508a}.rkC{color:#e0a070;background:#4a3428}.rkD{color:#a8b0c0;background:#303644}
+.srow{display:flex;align-items:center;gap:8px;font-size:13px;line-height:1.7}
+.srow span{width:9.5em;white-space:nowrap}.srow .bar{flex:1;margin:0}.srow em{font-style:normal;width:3.6em;text-align:right;color:var(--hi)}
 #nameIn,#modal .mbox input{display:block;width:100%;font:inherit;color:var(--paper);background:#0b0f26;border:2px solid var(--paper);padding:6px 8px;margin-top:3px;-webkit-user-select:text;user-select:text;touch-action:manipulation}
 .shareimg{display:block;width:100%;aspect-ratio:16/9;background:#0b0f26;margin-top:8px}
 #visit{position:absolute;left:8px;top:8px;max-width:calc(100% - 16px);padding:6px 10px;display:flex;gap:14px;align-items:center;line-height:1.4}
@@ -156,6 +163,7 @@ body.tooling #confirm [data-act="confirmYes"]{display:none}
     <button class="btn" id="nsBtn"></button>
     <button class="btn" id="spdBtn">▶ x1</button>
     <button class="btn" id="setBtn" data-act="panel:settings">⚙</button>
+    <button class="btn" id="scoreBtn" data-act="score"></button>
     <button class="btn" id="shareBtn" data-act="share"></button>
     <span id="chips" style="display:contents"></span>
   </div>
