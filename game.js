@@ -160,7 +160,7 @@ Object.assign(BUILD, {
     d:['米→地酒（高い）。保存食の蔵の隣だと速い','Rice → Rice wine (valuable). Faster next to a Preserve House.']},
 });
 const islOk = d => !d.isl || d.isl === ISLAND;
-const CATS = [['res',['資源','Resources']], ['proc',['加工','Crafting']], ['life',['暮らし','Living']]];
+const CATS = [...(isFarm ? [['field',['田畑','Fields']]] : []), ['res',['資源','Resources']], ['proc',['加工','Crafting']], ['life',['暮らし','Living']]];
 const UPGS = [
   {id:'route', n:['交易気球の定期便','Trade Balloon Route'], cost:[400],
     d:['気球が来るたびに、選んだ品物を自動で売る','Each balloon visit auto-sells the goods you choose.']},
@@ -1976,6 +1976,7 @@ function toolWhy(tool, i){
     return S.gold < DIG_COST ? L('お金が足りない','Not enough gold') : '';
   }
   if (c.t === 'water') return L('水路には植えられない','Cannot plant in a canal');
+  if (season() === 3) return L('冬は植えられない。春になったら種をまこう','You can’t plant in winter. Sow when spring comes');
   if (c.crop === tool) return L('もう植えてある','Already planted');
   return S.gold < CROPS[tool].seed ? L('お金が足りない','Not enough gold') : '';
 }
@@ -2116,7 +2117,7 @@ function clickCell(i){
     rockCheck(i); return true;
   }
   if (c.t === 'water'){ popAt(p.x, 0.6, p.z, waterLive.has(i) ? L('さらさら…','Trickle…') : L('流れが届いていない','The flow doesn’t reach here')); return true; }
-  if (c.t === 'sapling' && c.crop){ const r = growRate(i, c.crop); popAt(p.x, 0.7, p.z, N(CROPS[c.crop].n)+' '+Math.floor(c.g*100)+'%（×'+r.toFixed(1)+'）'); return true; }
+  if (isFarm && (c.t === 'grass' || (c.t === 'sapling' && c.crop))){ select(i); sfx('ui'); return true; }          // 空き地か畑をタップ → 種えらび
   if (c.t === 'sapling'){ popAt(p.x, 0.7, p.z, (ISL.tree === 'log' ? L('まだ若木…','Still a sapling…') : L('まだ芽…','Still sprouting…'))); return true; }
   if (c.t === 'b'){ if (c.b.type === 'warehouse') openPanel('market'); else { collect(i); select(i); } sfx('ui'); return true; }
   return false;
@@ -3245,10 +3246,10 @@ function placementInfo(i){
    UI
    ========================================================= */
 const panelEl = $('#panel'), bpanelEl = $('#bpanel');
-let panelName = null, buildTab = 'res', lastPanelHTML = '', lastBHTML = '';
+let panelName = null, buildTab = isFarm ? 'field' : 'res', lastPanelHTML = '', lastBHTML = '';
 function openPanel(n){ if (panelName === n){ closePanel(); return; } panelName = n; panelEl.hidden = false; document.body.classList.add('panel-open'); lastPanelHTML = ''; renderPanel(); }
 function closePanel(){ panelName = null; panelEl.hidden = true; document.body.classList.remove('panel-open'); }
-function select(i){ selCell = i; bpanelEl.hidden = i < 0; lastBHTML = ''; if (i >= 0) renderBPanel(); }
+function select(i){ selCell = i; document.body.classList.toggle('bpanel-open', i >= 0); bpanelEl.hidden = i < 0; lastBHTML = ''; if (i >= 0) renderBPanel(); }
 function setHTML(el, html, key){ if (key === 'p' ? html === lastPanelHTML : html === lastBHTML) return; el.innerHTML = gfix(html); if (key === 'p') lastPanelHTML = html; else lastBHTML = html; }
 function neighborHTML(){
   return ISL_ORDER.filter(to => to !== ISLAND).map(to => {
@@ -3259,6 +3260,15 @@ function neighborHTML(){
       : L('350G・住民0人からの新しい島。この島はこのまま残り、いつでも戻れる','A fresh island: 350G and no residents. This island stays, and you can return any time');
     return '<div class="row"><span class="grow">'+N(islName(to))+'<small style="color:var(--sub)">　'+what+'</small><br><small>'+note+'</small></span><button class="btn hot w" data-act="travelMenu:'+to+'" '+(ok?'':'disabled')+'>'+(been ? L('行く','Go') : L('渡る','Travel'))+'</button></div>';
   }).join('');
+}
+function fieldHTML(){
+  const winter = season() === 3;
+  const opt = (k, nm, c, d, ok) => '<button class="opt" data-act="tool:'+k+'" '+(ok ? '' : 'disabled')+'><div class="n">'+nm+'</div><div class="c">'+(c ? c+'G' : L('無料','free'))+'</div><div class="d">'+d+'</div></button>';
+  const mark = v => v >= 1.2 ? '◎' : v >= 1 ? '○' : v ? '△' : '×';
+  return '<div class="kv" style="margin-bottom:6px">'+farmLine()+'<br>'+(winter ? '<span class="r">'+L('冬は植えられない。春になったら種をまこう','You can’t plant in winter. Sow when spring comes')+'</span>' : L('選んでから地面をタップ。空き地を直接タップしてもまける','Pick one, then tap the ground. You can also tap open ground directly'))+'</div><div class="grid">' +
+    CROP_KEYS.map(k => opt(k, N(CROPS[k].n), CROPS[k].seed, N(CROPS[k].d)+'<br>'+SEASONS.map((n, q) => '<span class="'+(CROPS[k].s[q] >= 1.2 ? 'g' : CROPS[k].s[q] ? '' : 'r')+'">'+N(n)+mark(CROPS[k].s[q])+'</span>').join(' '), !winter && S.gold >= CROPS[k].seed)).join('') +
+    opt('water', L('水路を掘る','Dig a canal'), DIG_COST, L('湧き水からつなげて掘る。夏は流れが短くなる','Dig outward from the spring. The flow is shorter in summer'), S.gold >= DIG_COST) +
+    opt('clear', L('更地に戻す','Clear'), 0, L('田畑をなくす','Remove fields'), true) + '</div>';
 }
 function driveHTML(){
   if (S.tut >= 0) return '';
@@ -3313,17 +3323,13 @@ function renderPanel(){
   if (!panelName) return;
   let h = '';
   if (panelName === 'build'){
-    h = head(L('建設','Build')) + '<div class="tabs">' + CATS.map(([k,n])=>segBtn('tab:'+k, N(n), buildTab===k)).join('') + '</div><div class="grid">' +
+    h = head(L('建設','Build')) + '<div class="tabs">' + CATS.map(([k,n])=>segBtn('tab:'+k, N(n), buildTab===k)).join('') + '</div>' + (buildTab === 'field' ? fieldHTML() : '') + '<div class="grid">' +
       Object.entries(BUILD).filter(([k,d])=>!d.hidden && islOk(d) && d.cat === buildTab && reqOk(d)).map(([k,d])=>{
         const c = buildCost(k);
         return '<button class="opt" data-act="build:'+k+'" '+(canPay(c)?'':'disabled')+'><div class="n">'+N(d.n)+'</div><div class="c">'+costTxt(c)+'</div><div class="d">'+N(d.d)+'</div></button>';
       }).join('') + '</div>' + (buildTab === 'life' && !S.airport ? '<div class="kv" style="color:var(--sub);margin-top:6px">'+L('？？？：空港が開くと、もっと大きな楽しみが…','??? When the airport opens, something big awaits…')+'</div>' : '');
   } else if (panelName === 'farm'){
-    const opt = (k, nm, c, d) => '<button class="opt" data-act="tool:'+k+'" '+(S.gold >= c ? '' : 'disabled')+'><div class="n">'+nm+'</div><div class="c">'+(c ? c+'G' : L('無料','free'))+'</div><div class="d">'+d+'</div></button>';
-    h = head(L('田畑と水路','Fields & canals')) + '<div class="kv" style="margin-bottom:6px">'+farmLine()+'</div><div class="grid">' +
-      opt('water', L('水路を掘る','Dig a canal'), DIG_COST, L('湧き水からつなげて掘る。夏は流れが短くなる','Dig outward from the spring. The flow is shorter in summer')) +
-      CROP_KEYS.map(k => opt(k, N(CROPS[k].n), CROPS[k].seed, N(CROPS[k].d)+'<br>'+SEASONS.map((n, se) => '<span class="'+(CROPS[k].s[se] >= 1.2 ? 'g' : CROPS[k].s[se] ? '' : 'r')+'">'+N(n)+(CROPS[k].s[se] >= 1.2 ? '◎' : CROPS[k].s[se] >= 1 ? '○' : CROPS[k].s[se] ? '△' : '×')+'</span>').join(' '))).join('') +
-      opt('clear', L('更地に戻す','Clear'), 0, L('田畑や水路をなくす','Remove fields and canals')) + '</div>';
+    h = head(L('種をまく','Plant seeds')) + fieldHTML();
   } else if (panelName === 'upg'){
     h = head(L('アップグレード','Upgrades')) + '<div class="grid">' + UPGS.filter(islOk).map(u=>{
       const lv = S.upg[u.id] || 0, c = u.cost[lv], max = c === undefined, T = u.tiers && u.tiers[Math.min(lv, u.tiers.length-1)];
@@ -3377,9 +3383,26 @@ function renderPanel(){
   }
   setHTML(panelEl, h, 'p');
 }
+const plotMark = new THREE.Group();
+for (let k=0;k<4;k++){ const m = new THREE.Mesh(G.box, new THREE.MeshBasicMaterial({color:0xffd35a})); m.scale.set(k<2?0.96:0.07, 0.04, k<2?0.07:0.96); m.position.set(k<2?0:(k===2?-0.45:0.45), 0.04, k<2?(k===0?-0.45:0.45):0); plotMark.add(m); }
+plotMark.visible = false; scene.add(plotMark);
+// 種えらび：そのマスに今まいたときの育つ速さを、作物ごとに見せる
+function renderPlot(i){
+  const c = S.cells[i], se = season(), wet = isWet(i), winter = se === 3, pct = r => Math.round(r*100)+'%';
+  const rates = CROP_KEYS.map(k => [k, growRate(i, k, se, wet)]), best = rates.reduce((a, b) => b[1] > a[1] ? b : a)[0];
+  const opts = rates.map(([k, r]) => '<button class="opt seed" data-act="plant:'+k+'" '+(toolWhy(k, i) ? 'disabled' : '')+'><div class="n">'+(c.crop === k ? '● ' : '')+N(CROPS[k].n)+' <span class="c">'+CROPS[k].seed+'G</span></div>' +
+    '<div class="d">'+L('今の育ち ','Growth now ')+'<span class="'+(r >= 1 ? 'g' : r < 0.45 ? 'r' : '')+'">'+pct(r)+'</span>'+(k === best && !winter ? ' <span style="color:var(--hi)">'+L('おすすめ','best here')+'</span>' : '')+'<br>'+
+    SEASONS.map((n, q) => N(n)+pct(growRate(i, k, q, wet))).join(' ')+'</div></button>').join('');
+  setHTML(bpanelEl, '<div class="ph"><span>'+(c.crop ? N(CROPS[c.crop].n)+L('の畑',' field')+' '+Math.floor((c.g || 0)*100)+'%' : L('種をまく','Plant seeds'))+'</span><button class="btn x" data-act="unselect">×</button></div>' +
+    '<div class="kv">'+N(SEASONS[se])+'・'+(wet ? L('水ぎわ（稲向き）','Beside water (good for rice)') : L('乾いた土（小麦向き）','Dry soil (good for wheat)')) +
+    (winter ? '<br><span class="r">'+L('冬は植えられない。春になったら種をまこう','You can’t plant in winter. Sow when spring comes')+'</span>' : '<br>'+L('選ぶとここにまかれ、続けてほかのマスもタップでまける','Pick one to plant here, then keep tapping to plant more'))+'</div>' +
+    '<div class="seeds">'+opts+'</div>' + (c.crop ? '<div class="btns"><button class="btn" data-act="clearPlot">'+L('更地に戻す','Clear')+'</button></div>' : ''), 'b');
+}
 function renderBPanel(){
   if (selCell < 0) return;
-  const c = S.cells[selCell]; if (c.t !== 'b'){ select(-1); return; }
+  const c = S.cells[selCell];
+  if (isFarm && (c.t === 'grass' || (c.crop && c.t === 'sapling'))){ renderPlot(selCell); return; }
+  if (c.t !== 'b'){ select(-1); return; }
   const b = c.b, d = BUILD[b.type], Lst = [];
   let status = '';
   if (b.build > 0) status = '<span style="color:var(--hi)">'+L('工事中… あと','Under construction… ')+Math.ceil(b.build)+L('秒','s')+'</span>';
@@ -3471,7 +3494,7 @@ function doAct(actStr, el){
     case 'unselect': select(-1); break;
     case 'ev': chooseEvent(+arg); break;
     case 'closeModal': $('#modal').hidden = true; break;
-    case 'skipTut': S.tut = TUT.length; endTutorial(); break;
+    case 'skipTut': if (isFarm){ S.farmHintOff = 1; break; } S.tut = TUT.length; endTutorial(); break;
     case 'airport': if (S.gold >= P.goal && !S.airport){ S.gold -= P.goal; S.airport = true; S.goalDay = S.day; story('空港を開き、飛行船を迎えた','Opened an airport and welcomed an airship'); closePanel(); buildDock(); buildAirship(false); } break;
     case 'drive': setDrive(+arg); break;
     case 'expand': expandIsland(arg); break;
@@ -3482,6 +3505,8 @@ function doAct(actStr, el){
     case 'restoreMenu': showRestore(); return;
     case 'restore': restoreBackup(+arg); return;
     case 'backTitle': showTitle(); return;
+    case 'plant': if (isFarm && CROPS[arg] && selCell >= 0 && useTool(arg, selCell)){ pending = -1; startMode({kind:'tool', tool:arg}); } break;
+    case 'clearPlot': if (isFarm && selCell >= 0){ useTool('clear', selCell); } break;
     case 'farm': if (isFarm){ if (mode?.kind === 'tool') cancelMode(); openPanel('farm'); } break;
     case 'tool': if (isFarm && (arg === 'water' || arg === 'clear' || CROPS[arg])) startMode({kind:'tool', tool:arg}); break;
     case 'bell': if (isDairy){ if (mode?.kind === 'bell') cancelMode(); else startMode({kind:'bell'}); } break;
@@ -3524,7 +3549,7 @@ function herdLine(){
   return L('牛 ','Cows ')+S.herd.length+(full ? L('（搾れる '+full+'）',' ('+full+' ready)') : '')+'・'+'<span class="'+(n ? 'g' : 'r')+'">'+(n ? L('輪の草 ','Grass in ring ')+n : L('鐘を移そう','Move the bell'))+'</span>';
 }
 function renderTop(){
-  if (isFarm){ const fb = $('#farmBtn'); fb.hidden = false; fb.textContent = L('田畑と水路','Fields & canals'); fb.classList.toggle('pulse', fieldCount() < 4); }
+  if (isFarm){ const fb = $('#farmBtn'); fb.hidden = false; fb.textContent = L('種をまく','Plant seeds'); fb.classList.toggle('pulse', season() !== 3 && (!S.stats.planted || fieldCount() < 4)); }
   if (isDairy){ const bb = $('#bellBtn'); bb.hidden = false; bb.textContent = L('鐘で放牧','Herd bell'); bb.classList.toggle('pulse', !!S.herd && !isNight() && !pastureAt(S.bell)); }
   $('#gold').textContent = fmt(S.gold);
   // 上のバーが何段になっても、その下に注文バー・回転ボタンを置く
@@ -3559,6 +3584,11 @@ function renderTop(){
     if (S.tut === 6 && countB('sawmill') && workerCount() >= housing()) msg = L('住む家が満員で雇えない！<b>住宅</b>を建てるか、木こり小屋の住民を<b>減らそう</b>。','No room to hire! Build a <b>House</b> or <b>remove</b> a worker from the camp.');
     tutEl.hidden = false; tutEl.querySelector('.msg').innerHTML = '<small style="color:var(--sub)">'+(S.tut+1)+'/'+TUT.length+'</small><br>'+msg;
     const T = TUT[S.tut]; if (T.el){ const e = $(T.el); if (e) e.classList.add('pulse'); }
+  } else if (isFarm && !S.farmHintOff && !S.stats.planted){
+    tutEl.hidden = false;
+    tutEl.querySelector('.msg').innerHTML = season() === 3
+      ? L('冬は種をまけない。<b>春になったら</b>、空いている地面をタップしよう。','No planting in winter. <b>When spring comes</b>, tap any open ground.')
+      : L('<b>空いている地面をタップ</b>すると、小麦・稲・かぼちゃの種をまける。<br>「種をまく」ボタンや、建設の「田畑」からでもOK。','<b>Tap any open ground</b> to plant wheat, rice or pumpkins.<br>The Plant seeds button and Build → Fields work too.');
   } else tutEl.hidden = true;
 }
 function toast(msg, cls=''){
@@ -3894,8 +3924,8 @@ function showArrival(){
 }
 function farmGuide(){
   return '<p class="kv">'+L(
-    '<b>この島は水と四季で育てる</b><br>・<b>「田畑と水路」</b>で、湧き水から水路を引き、作物を植える<br>・<b>稲は水路のとなり</b>、<b>小麦は乾いた土</b>、<b>かぼちゃは違う作物のとなり</b>が好き<br>・流れの届く長さには限りがある。<b>夏は短くなる</b>（揚水水車で伸びる）<br>・季節は2日ずつ。<b>冬は何も育たない</b>ので、秋に貯めて加工でしのぐ<br>・実った畑はタップか<b>農家</b>で刈り取る。目標は <b>'+fmt(P.goal)+'G</b>',
-    '<b>This island runs on water and seasons</b><br>• Use <b>Fields &amp; canals</b> to lead water from the spring and plant crops<br>• <b>Rice likes canals</b>, <b>wheat likes dry soil</b>, <b>pumpkins like a different crop next door</b><br>• The flow only reaches so far and <b>is shorter in summer</b> (Waterwheels extend it)<br>• Seasons last 2 days. <b>Nothing grows in winter</b>, so stock up in autumn and craft<br>• Tap ripe fields, or staff a <b>Farmhouse</b>. Goal: <b>'+fmt(P.goal)+'G</b>')+'</p>';
+    '<b>この島は水と四季で育てる</b><br>・<b>空いている地面をタップ</b>して種をまく（「種をまく」ボタンでも）<br>・<b>稲は水路のとなり</b>、<b>小麦は乾いた土</b>、<b>かぼちゃは違う作物のとなり</b>が好き<br>・流れの届く長さには限りがある。<b>夏は短くなる</b>（揚水水車で伸びる）<br>・季節は2日ずつ。<b>冬は何も育たない</b>ので、秋に貯めて加工でしのぐ<br>・実った畑はタップか<b>農家</b>で刈り取る。目標は <b>'+fmt(P.goal)+'G</b>',
+    '<b>This island runs on water and seasons</b><br>• <b>Tap open ground</b> to plant (or use the Plant seeds button)<br>• <b>Rice likes canals</b>, <b>wheat likes dry soil</b>, <b>pumpkins like a different crop next door</b><br>• The flow only reaches so far and <b>is shorter in summer</b> (Waterwheels extend it)<br>• Seasons last 2 days. <b>Nothing grows in winter</b>, so stock up in autumn and craft<br>• Tap ripe fields, or staff a <b>Farmhouse</b>. Goal: <b>'+fmt(P.goal)+'G</b>')+'</p>';
 }
 function dairyGuide(){
   return '<p class="kv">'+L(
@@ -4030,6 +4060,8 @@ function frame(now){
     if (wdt || !curEvent) musicTick();          // 絵が出ているあいだも祭りばやしは続く
     if (wdt && S.festStill === S.day){ festHeard += dt; if ((festHeard >= FEST_STILL_AFTER && nightAmt > 0.5) || hourOf(S.time) >= 27.5) showFestStill(); }
   } else if (bonfire.visible){ bonfire.visible = false; festLight.intensity = 0; }
+  plotMark.visible = isFarm && selCell >= 0 && S.cells[selCell].t !== 'b';
+  if (plotMark.visible){ const pp = wpos(selCell); plotMark.position.set(pp.x, 0, pp.z); }
   updateFarm(dt); updateBell(dt); updateRaze(dt); updateDrive(); updateStrollers(wdt ? dt*Math.min(4, S.speed) : 0);
   updateFx(wdt ? dt : 0); updatePops(dt); updateAirship(dt, elapsed); updateCritters(wdt ? dt : 0); updateBadges(); updateAlerts(); updateTourists(wdt ? dt*Math.min(4, S.speed) : 0);
   // マーカー・ホバー・置き場所プレビュー

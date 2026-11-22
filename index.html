@@ -55,6 +55,8 @@ button{font:inherit;color:inherit;cursor:pointer}
 .bgrid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px}
 .bgrid .btn{width:100%;padding:6px 4px;font-size:13px;overflow:hidden;text-overflow:ellipsis}
 .row .btn.w{min-width:8.6em}
+.seeds{display:flex;flex-direction:column;gap:6px;margin-top:8px}
+.seed .c{color:var(--paper)}
 #goldChip b{color:var(--paper)}
 .gu{font-style:normal;color:var(--hi);margin-left:.22em}
 #missions{position:absolute;left:8px;top:52px;display:flex;flex-wrap:wrap;gap:6px;pointer-events:none;max-width:calc(100% - 280px)}
@@ -141,6 +143,7 @@ body.tooling #confirm [data-act="confirmYes"]{display:none}
   #toasts,#bellBtn:not([hidden]) ~ #toasts,#farmBtn:not([hidden]) ~ #toasts{bottom:auto;top:130px}
   #bellBtn,#farmBtn{font-size:13px}
   body.placing #bellBtn, body.panel-open #bellBtn, body.placing #farmBtn, body.panel-open #farmBtn{display:none}
+  body.bpanel-open #farmBtn, body.bpanel-open #bellBtn, body.bpanel-open #side{display:none}
   #bottom .btn{font-size:13px;padding:7px 9px}
   #goldChip{font-size:15px}
   #bpanel{top:auto;bottom:62px;left:8px;right:8px;width:auto;max-height:46vh}
