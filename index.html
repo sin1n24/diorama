@@ -44,7 +44,14 @@ button{font:inherit;color:inherit;cursor:pointer}
 .chip.item{cursor:pointer}
 .chip.item:hover{background:#3c4690}
 .chip small{color:var(--sub)}
-#goldChip{font-size:18px}
+#goldChip{font-size:18px;min-width:7.4em;text-align:right}
+/* 桁が増えても、うしろのボタンの位置が変わらないように幅を固定 */
+#top,#ui .btn,.chip{font-variant-numeric:tabular-nums}
+#clock{min-width:9.4em} #moodChip{min-width:5.6em} #nsBtn{min-width:6.6em} #spdBtn{min-width:4.4em}
+.chip.item b{display:inline-block;min-width:3.4ch;text-align:right} .chip.item small{display:inline-block;min-width:5.5ch}
+.bgrid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px}
+.bgrid .btn{width:100%;padding:6px 4px;font-size:13px;overflow:hidden;text-overflow:ellipsis}
+.row .btn.w{min-width:8.6em}
 #goldChip b{color:var(--paper)}
 .gu{font-style:normal;color:var(--hi);margin-left:.22em}
 #missions{position:absolute;left:8px;top:52px;display:flex;flex-wrap:wrap;gap:6px;pointer-events:none;max-width:calc(100% - 280px)}
@@ -129,12 +136,12 @@ button{font:inherit;color:inherit;cursor:pointer}
 <div id="ui">
   <div id="top">
     <div class="chip" id="goldChip"><b id="gold">0</b><i class="gu">G</i></div>
-    <span id="chips" style="display:contents"></span>
     <div class="chip" id="clock">Day 1</div>
     <div class="chip" id="moodChip"><span id="moodLbl">幸福</span> <b id="mood">65</b></div>
     <button class="btn" id="nsBtn"></button>
     <button class="btn" id="spdBtn">▶ x1</button>
     <button class="btn" id="setBtn" data-act="panel:settings">⚙</button>
+    <span id="chips" style="display:contents"></span>
   </div>
   <div id="missions"></div>
   <div id="side">

@@ -49,21 +49,23 @@ const BUILD = {
     d:['まわりに苗木を植える','Plants saplings around it.']},
   sawmill:  {n:['製材所','Sawmill'], cost:{g:150}, in:'log', out:'plank', time:3, ind:true, partner:'workshop', cat:'proc',
     d:['丸太→板材。家具工房の隣だと速い','Logs → Planks. Faster next to a Workshop.']},
-  workshop: {n:['家具工房','Workshop'], cost:{g:750}, in:'plank', out:'furn', time:6, ind:true, partner:'sawmill', light:true, cat:'proc',
+  workshop: {n:['家具工房','Workshop'], cost:{g:750, ore:5}, in:'plank', out:'furn', time:6, ind:true, partner:'sawmill', light:true, cat:'proc',
     d:['板材→高級家具。製材所の隣だと速い','Planks → Furniture. Faster next to a Sawmill.']},
-  smelter:  {n:['製鉄所','Smelter'], cost:{g:2600}, in:'ore', out:'ingot', time:5, ind:true, partner:'factory', light:true, cat:'proc',
+  smelter:  {n:['製鉄所','Smelter'], cost:{g:2600, ore:20}, in:'ore', out:'ingot', time:5, ind:true, partner:'factory', light:true, cat:'proc',
     d:['鉄鉱石→鉄インゴット。歯車工場の隣だと速い','Iron Ore → Ingots. Faster next to Gear Works.']},
-  factory:  {n:['歯車工場','Gear Works'], cost:{g:4600}, in:'ingot', out:'gear', time:8, ind:true, partner:'smelter', light:true, cat:'proc',
+  factory:  {n:['歯車工場','Gear Works'], cost:{g:4600, ingot:6}, in:'ingot', out:'gear', time:8, ind:true, partner:'smelter', light:true, cat:'proc',
     d:['インゴット→歯車。製鉄所の隣だと速い','Ingots → Gears. Faster next to a Smelter.']},
+  recycle:  {n:['リサイクル工場','Recycling Plant'], cost:{g:1600}, gen:'ore', time:7, ind:true, upkeep:15, cat:'proc',
+    d:['古い道具やガラクタから鉄鉱石を取り出す。ゆっくりだが尽きない（毎日15G）','Recovers iron ore from scrap. Slow, but never runs out (15G/day).']},
   house:    {n:['住宅','House'], cost:{g:120}, housing:3, light:true, near:true, cat:'life',
     d:['3人住める。近くの職場は通勤が速い。工場の隣はうるさい','Homes 3. Nearby workplaces get faster commutes. Noisy next to factories.']},
   bakery:   {n:['パン屋','Bakery'], cost:{g:480}, mood:6, moodCap:30, upkeep:20, light:true, near:true, cat:'life',
     d:['みんなの幸福が上がる（毎日20G）','Raises happiness (20G/day).']},
-  park:     {n:['花の公園','Flower Park'], cost:{g:180}, mood:3, moodCap:12, near:true, cat:'life',
-    d:['花と噴水。幸福が少し上がる（維持費なし）','Flowers and a fountain. A little happiness, no upkeep.']},
-  bath:     {n:['浴場','Bathhouse'], cost:{g:900}, mood:5, moodCap:20, upkeep:25, bath:true, light:true, near:true, cat:'life',
+  park:     {n:['花の公園','Flower Park'], cost:{g:180}, mood:5, moodCap:15, near:true, size:2, cat:'life',
+    d:['2×2マスの花と噴水。幸福が上がる（維持費なし）','A 2×2 garden with a fountain. Raises happiness, no upkeep.']},
+  bath:     {n:['浴場','Bathhouse'], cost:{g:900, ore:10}, mood:5, moodCap:20, upkeep:25, bath:true, light:true, near:true, cat:'life',
     d:['幸福が上がり、夜勤の疲れが半分になる（毎日25G）','Raises happiness and halves night-shift fatigue (25G/day).']},
-  fun:      {n:['空の遊園地','Sky Fair'], cost:{g:20000}, mood:8, moodCap:40, fun:true, req:'airport', light:true, cat:'life',
+  fun:      {n:['空の遊園地','Sky Fair'], cost:{g:20000, ingot:20}, mood:8, moodCap:40, fun:true, size:2, req:'airport', light:true, cat:'life',
     d:['観光客が毎朝お金を落としていく。レベルを上げると乗り物が増える','Tourists spend money every morning. Levels add more rides.']},
 };
 const CATS = [['res',['資源','Resources']], ['proc',['加工','Crafting']], ['life',['暮らし','Living']]];
@@ -95,6 +97,11 @@ const cx = i => i % W, cz = i => Math.floor(i / W);
 const wpos = i => ({x: cx(i) - (W-1)/2, z: cz(i) - (W-1)/2});
 const cellAt = (x, z) => clamp(Math.floor(z + W/2), 0, W-1)*W + clamp(Math.floor(x + W/2), 0, W-1);
 const cheb = (a,b) => Math.max(Math.abs(cx(a)-cx(b)), Math.abs(cz(a)-cz(b)));
+// 2×2マスの建物（公園・遊園地）：左上のマスが本体で、ほかの3マスは {t:'occ', of:本体}
+const bSize = i => S.cells[i]?.t === 'b' ? (BUILD[S.cells[i].b.type]?.size || 1) : 1;
+const bCenter = i => { const p = wpos(i), k = (bSize(i) - 1)/2; return {x:p.x + k, z:p.z + k}; };
+const footCells = (i, sz) => { const r = []; for (let dz=0; dz<sz; dz++) for (let dx=0; dx<sz; dx++) r.push(i + dz*W + dx); return r; };
+const ownerOf = i => S.cells[i]?.t === 'occ' ? S.cells[i].of : i;
 const neigh8 = i => { const r=[]; for(let dz=-1;dz<=1;dz++)for(let dx=-1;dx<=1;dx++){ if(!dx&&!dz)continue; const x=cx(i)+dx,z=cz(i)+dz; if(x>=0&&x<W&&z>=0&&z<W) r.push(z*W+x);} return r; };
 const neigh4 = i => { const r=[]; for (const [dx,dz] of [[1,0],[-1,0],[0,1],[0,-1]]){ const x=cx(i)+dx,z=cz(i)+dz; if(x>=0&&x<W&&z>=0&&z<W) r.push(z*W+x); } return r; };
 const hash = (a, b=0) => { const s = Math.sin(a*127.1 + b*311.7 + 13.13) * 43758.5453; return s - Math.floor(s); };
@@ -159,13 +166,13 @@ const STARS = STAR_DATA.map(([az, alt, m, c]) => new THREE.Vector4(az*Math.PI/18
 const postMat = new THREE.ShaderMaterial({
   uniforms:{ tColor:{value:null}, tDepth:{value:null}, res:{value:new THREE.Vector2()},
     skyTop:{value:new THREE.Color()}, skyBot:{value:new THREE.Color()}, night:{value:0}, time:{value:0}, edgeTh:{value:0.0016},
-    stars:{value:STARS}, yaw:{value:0}, meteor:{value:new THREE.Vector4(0,0,0,2)}, outline:{value:1} },
+    stars:{value:STARS}, yaw:{value:0}, meteor:{value:Array.from({length:6}, ()=>new THREE.Vector4(0,0,0,2))}, mLen:{value:28}, outline:{value:1} },
   vertexShader:`varying vec2 vUv; void main(){ vUv=uv; gl_Position=vec4(position.xy,0.,1.); }`,
   fragmentShader:`
     uniform sampler2D tColor; uniform sampler2D tDepth; uniform vec2 res;
     uniform vec3 skyTop; uniform vec3 skyBot; uniform float night; uniform float time; uniform float edgeTh; uniform float outline;
     #define NSTAR ${STARS.length}
-    uniform vec4 stars[NSTAR]; uniform float yaw; uniform vec4 meteor;
+    uniform vec4 stars[NSTAR]; uniform float yaw; uniform vec4 meteor[6]; uniform float mLen;
     varying vec2 vUv;
     float B2(vec2 a){ a=floor(a); return fract(a.x/2.+a.y*a.y*.75); }
     float B4(vec2 a){ return B2(.5*a)*.25 + B2(a); }
@@ -186,11 +193,16 @@ const postMat = new THREE.ShaderMaterial({
             vec3 sc = st.w > 1.5 ? vec3(0.72,0.84,1.0) : (st.w > 0.5 ? vec3(1.0,0.66,0.5) : vec3(1.0,0.98,0.9));
             col += sc * a * st.z * (0.78 + 0.22*sin(time*2.3 + float(k)*1.7)) * night;
           }
-          if (meteor.w < 1.0){
-            vec2 D = normalize(vec2(cos(meteor.z), sin(meteor.z)) * res);
-            vec2 rel = vUv*res - (meteor.xy + vec2(cos(meteor.z), sin(meteor.z))*meteor.w*0.3)*res;
-            float along = dot(rel, D), perp = abs(rel.x*D.y - rel.y*D.x);
-            if (along < 0.0 && along > -28.0 && perp < 0.75) col += vec3(1.0,0.95,0.8) * (1.0 + along/28.0) * night * (1.0 - meteor.w);
+          for (int k=0; k<6; k++){
+            vec4 me = meteor[k];
+            if (me.w < 1.0){
+              vec2 D = normalize(vec2(cos(me.z), sin(me.z)) * res);
+              vec2 rel = vUv*res - (me.xy + vec2(cos(me.z), sin(me.z))*me.w*0.3)*res;
+              float along = dot(rel, D), perp = abs(rel.x*D.y - rel.y*D.x);
+              float fade = night * (1.0 - me.w) * min(1.0, me.w*8.0 + 0.2);
+              if (along < 0.0 && along > -mLen && perp < 0.75 + 0.6*step(40.0, mLen)*(1.0 + along/mLen)) col += vec3(1.0,0.95,0.8) * (1.0 + along/mLen) * fade * 1.3;
+              if (along >= 0.0 && along < 1.5 && perp < 1.2) col += vec3(1.0) * fade;
+            }
           }
         }
       } else {
@@ -249,8 +261,8 @@ sun.shadow.bias = -0.002;
 scene.add(sun); scene.add(sun.target);
 const festLight = new THREE.PointLight(0xff9040, 0, 4, 2); scene.add(festLight);
 const LIGHT_N = 8, lightPool = [];
-const glowMat = new THREE.MeshBasicMaterial({color:0xffa848, transparent:true, opacity:0, blending:THREE.AdditiveBlending, depthWrite:false});
-const glowMesh = new THREE.InstancedMesh(new THREE.CircleGeometry(0.4, 12).rotateX(-Math.PI/2), glowMat, 160); glowMesh.count = 0; scene.add(glowMesh);
+const glowMat = new THREE.MeshBasicMaterial({color:0xffffff, transparent:true, opacity:0, blending:THREE.AdditiveBlending, depthWrite:false});
+const glowMesh = new THREE.InstancedMesh(new THREE.CircleGeometry(0.4, 12).rotateX(-Math.PI/2), glowMat, 160); glowMesh.count = 0; glowMesh.setColorAt(0, new THREE.Color(0xffa848)); scene.add(glowMesh);
 for (let i=0;i<LIGHT_N;i++){ const l = new THREE.PointLight(0xffb060, 0, 2.6, 2); l.position.set(0,-10,0); scene.add(l); lightPool.push({l, cell:-1, fire:false}); }
 
 /* ---- マテリアルと形 */
@@ -260,12 +272,15 @@ const matCache = {};
 const MT = hex => matCache[hex] || (matCache[hex] = new THREE.MeshToonMaterial({color:hex, gradientMap:gradTex}));
 const winMat  = new THREE.MeshToonMaterial({color:0x3a4868, emissive:0xffc860, emissiveIntensity:0, gradientMap:gradTex});
 const fireMat = new THREE.MeshToonMaterial({color:0x902a10, emissive:0xff6a1a, emissiveIntensity:0.7, gradientMap:gradTex});
+// ちょうちん・ランタン：昼はくすみ、夜に光る（色ごとに1つのマテリアルを共有）
+const lampMats = [], LM = {};
+const lampMat = hex => { if (!LM[hex]){ const m = new THREE.MeshBasicMaterial({color:hex}); m.userData.base = new THREE.Color(hex); lampMats.push(m); LM[hex] = m; } return LM[hex]; };
 const ghostOk = new THREE.MeshBasicMaterial({color:0x7ee08a, transparent:true, opacity:0.55, depthWrite:false});
 const ghostNg = new THREE.MeshBasicMaterial({color:0xff6b6b, transparent:true, opacity:0.55, depthWrite:false});
 const G = {
   box: new THREE.BoxGeometry(1,1,1), cyl: new THREE.CylinderGeometry(1,1,1,8), cyl6: new THREE.CylinderGeometry(1,1,1,6), cyl3: new THREE.CylinderGeometry(1,1,1,3),
   ico1: new THREE.IcosahedronGeometry(1,1), cone4: new THREE.ConeGeometry(1,1,4), cone6: new THREE.ConeGeometry(1,1,6),
-  ico: new THREE.IcosahedronGeometry(1,0), dod: new THREE.DodecahedronGeometry(1,0), sph: new THREE.IcosahedronGeometry(1,2),
+  ico: new THREE.IcosahedronGeometry(1,0), torus: new THREE.TorusGeometry(1, 0.06, 4, 28), dod: new THREE.DodecahedronGeometry(1,0), sph: new THREE.IcosahedronGeometry(1,2),
 };
 function part(geo, hex, sx,sy,sz, x,y,z, mat){
   const m = new THREE.Mesh(geo, mat || MT(hex)); m.scale.set(sx,sy,sz); m.position.set(x,y,z);
@@ -323,6 +338,19 @@ function decayRoutes(){
   for (const k of ks){ S.routes[k] *= 0.995; if (S.routes[k] < 0.03) delete S.routes[k]; }
   const left = Object.keys(S.routes);
   if (left.length > ROUTE_MAX) left.sort((a,b)=>S.routes[a]-S.routes[b]).slice(0, left.length - ROUTE_MAX).forEach(k=>delete S.routes[k]);
+}
+// 同じ種類の建物どうし（家と家、工房と工房…）も、行き来する細い道でつながる
+function wearSocial(){
+  const done = new Set(), act = i => { const b = S.cells[i].b, d = BUILD[b.type]; return b.build <= 0 && (b.workers > 0 || d.housing || d.mood); };
+  for (const i of allB()){
+    const b = S.cells[i].b; if (b.type === 'warehouse' || !act(i)) continue;
+    let best = -1, bd = 99;
+    for (const j of allB(b.type)){ if (j === i || !act(j)) continue; const d = cheb(i, j); if (d < bd){ bd = d; best = j; } }
+    if (best < 0 || bd > 4) continue;
+    const pk = Math.min(i, best) + ',' + Math.max(i, best); if (done.has(pk)) continue; done.add(pk);
+    const a = bPt(i, {ox:0}), c = bPt(best, {ox:0}), key = routeKey(a.x, a.z, c.x, c.z);
+    if (key) wearRoute(key, Math.hypot(a.x - c.x, a.z - c.z), 2*0.06);
+  }
 }
 function updatePaths(){
   const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0,1,0), sc = new THREE.Vector3(), ps = new THREE.Vector3(), col = new THREE.Color();
@@ -652,15 +680,25 @@ function makeBuilding(type, r=0.5, b=null){
       g.add(part(G.ico, 0xd8a050, 0.14,0.09,0.09, 0,0.52,0.3));
       win(g, -0.15,0.22,0.285); win(g, 0.15,0.22,0.285); u.light=[0,0.4,0.55];
       break;
-    case 'park': {
-      g.add(part(G.box, 0x5aa84a, 0.94,0.04,0.94, 0,0.02,0));
-      g.add(part(G.box, 0xd8c8a0, 0.94,0.045,0.14, 0,0.022,0)); g.add(part(G.box, 0xd8c8a0, 0.14,0.045,0.94, 0,0.022,0));
-      g.add(part(G.cyl, 0xb8b8c0, 0.2,0.1,0.2, 0,0.07,0)); g.add(part(G.cyl, 0x6ac0f0, 0.16,0.02,0.16, 0,0.12,0));
-      g.add(part(G.cyl, 0xb8b8c0, 0.035,0.18,0.035, 0,0.2,0)); g.add(part(G.cyl, 0x8ad0f8, 0.07,0.03,0.07, 0,0.29,0));
+    case 'park': {   // 2×2マス（座標は -0.95〜0.95）
+      g.add(part(G.box, 0x5aa84a, 1.9,0.04,1.9, 0,0.02,0));
+      g.add(part(G.box, 0xd8c8a0, 1.9,0.045,0.2, 0,0.022,0.1)); g.add(part(G.box, 0xd8c8a0, 0.2,0.045,1.9, 0.1,0.022,0));
+      g.add(part(G.cyl, 0xb8b8c0, 0.36,0.12,0.36, 0.1,0.08,0.1)); g.add(part(G.cyl, 0x6ac0f0, 0.3,0.02,0.3, 0.1,0.145,0.1));
+      g.add(part(G.cyl, 0xb8b8c0, 0.14,0.1,0.14, 0.1,0.2,0.1)); g.add(part(G.cyl, 0x8ad0f8, 0.11,0.02,0.11, 0.1,0.255,0.1));
+      g.add(part(G.cyl, 0xb8b8c0, 0.035,0.2,0.035, 0.1,0.33,0.1)); g.add(part(G.sph, 0xbfe6ff, 0.06,0.05,0.06, 0.1,0.44,0.1));
       const FL = [0xff6a8a, 0xffd35a, 0xffffff, 0xc87af0, 0xff9a40];
-      for (const [x, z] of [[-0.3,-0.3],[0.3,0.3],[0.3,-0.3]]){ g.add(part(G.box, 0x7a5030, 0.26,0.05,0.26, x,0.04,z)); for (let k=0;k<4;k++) g.add(part(G.ico, FL[(k + (x>0?1:0) + (z>0?2:0)) % 5], 0.045,0.045,0.045, x + (k%2-0.5)*0.12, 0.1, z + (Math.floor(k/2)-0.5)*0.12)); }
-      g.add(part(G.cyl6, 0x7a4a2a, 0.04,0.22,0.04, -0.3,0.11,0.3)); g.add(part(G.ico1, 0x4aa85a, 0.17,0.17,0.17, -0.3,0.32,0.3));
-      g.add(part(G.box, 0x8a5a2e, 0.26,0.03,0.08, 0.16,0.1,0.42)); g.add(part(G.box, 0x8a5a2e, 0.26,0.08,0.02, 0.16,0.14,0.455));
+      for (const [x, z, k0] of [[-0.5,-0.5,0],[0.62,0.62,2],[-0.5,0.62,3]]){
+        g.add(part(G.box, 0x7a5030, 0.6,0.06,0.5, x,0.045,z));
+        for (let k=0;k<9;k++) g.add(part(G.ico, FL[(k + k0) % 5], 0.05,0.05,0.05, x + (k%3-1)*0.17, 0.11, z + (Math.floor(k/3)-1)*0.14));
+      }
+      g.add(part(G.cyl, 0x4aa0d8, 0.34,0.03,0.26, 0.6,0.035,-0.5)); g.add(part(G.cyl, 0x6ac0f0, 0.3,0.02,0.22, 0.6,0.05,-0.5));   // 池と蓮
+      for (const [x,z] of [[0.5,-0.55],[0.7,-0.45]]) g.add(part(G.cyl, 0x4aa85a, 0.06,0.01,0.06, x,0.065,z));
+      const tr = (x, z, s=1) => { g.add(part(G.cyl6, 0x7a4a2a, 0.05*s,0.3*s,0.05*s, x,0.15*s,z)); g.add(part(G.ico1, 0x4aa85a, 0.22*s,0.22*s,0.22*s, x,0.42*s,z)); };
+      tr(-0.8,-0.05, 1.1); tr(0.82,0.12); tr(-0.15,-0.82, 0.9);
+      for (const [x, z, ry] of [[-0.3,0.4,0],[0.45,-0.12,Math.PI/2]]){ const bn = new THREE.Group(); bn.position.set(x,0,z); bn.rotation.y = ry;
+        bn.add(part(G.box, 0x8a5a2e, 0.3,0.03,0.09, 0,0.1,0)); bn.add(part(G.box, 0x8a5a2e, 0.3,0.09,0.02, 0,0.15,-0.04)); g.add(bn); }
+      for (const [x, z] of [[-0.12,0.85],[0.32,-0.85]]){ g.add(part(G.cyl, 0x3a3a44, 0.02,0.42,0.02, x,0.21,z)); g.add(part(G.box, 0, 0.07,0.08,0.07, x,0.45,z, lampMat(0xffe0a0))); }
+      u.light = [0.1,0.4,0.95];
       break; }
     case 'bath':
       g.add(part(G.box, 0xc8a070, 0.7,0.42,0.55, 0,0.21,0)); roof(g, 0.76, 0.3, 0.42, 0x4a5a6a);
@@ -670,27 +708,47 @@ function makeBuilding(type, r=0.5, b=null){
       g.add(part(G.cyl, 0x8a8a8a, 0.15,0.06,0.15, 0.38,0.03,0.32)); g.add(part(G.cyl, 0x9ad8f0, 0.12,0.02,0.12, 0.38,0.065,0.32));
       win(g, -0.22,0.26,0.28); u.light = [0,0.4,0.5];
       break;
-    case 'fun': {
+    case 'fun': {   // 2×2マス。レベルが上がるほど乗り物が増える
       const lv = b ? b.lvl : 1;
-      g.add(part(G.box, 0xe8d8b0, 0.96,0.05,0.96, 0,0.025,0));
-      const car = new THREE.Group(); car.position.set(-0.22,0,0.22);
-      car.add(part(G.cyl, 0xd84a6a, 0.26,0.06,0.26, 0,0.08,0)); car.add(part(G.cyl, 0xf0e0c0, 0.03,0.32,0.03, 0,0.26,0));
-      car.add(part(G.cone6, 0xf0c040, 0.3,0.16,0.3, 0,0.48,0)); car.add(part(G.cone6, 0xd84a6a, 0.31,0.06,0.31, 0,0.41,0));
-      for (let k=0;k<6;k++){ const a = k/6*Math.PI*2; car.add(part(G.cyl, 0xf8f8f8, 0.01,0.28,0.01, Math.cos(a)*0.2,0.25,Math.sin(a)*0.2)); car.add(part(G.box, [0xffffff,0x8ab0e0,0xf0a0a0][k%3], 0.07,0.06,0.04, Math.cos(a)*0.2,0.17,Math.sin(a)*0.2)); }
-      g.add(car); u.spin.push([car, 'y', 1.2]);
-      if (lv >= 2){
-        g.add(strut(new THREE.Group(), 0x8a8a92, 0.12,0,-0.32, 0.22,0.62,-0.2, 0.035).parent);
-        for (const [x0, z0] of [[0.32,-0.32],[0.12,-0.08],[0.32,-0.08]]) strut(g, 0x8a8a92, x0,0,z0, 0.22,0.62,-0.2, 0.035);
-        const fw = new THREE.Group(); fw.position.set(0.22,0.62,-0.2); fw.rotation.y = Math.PI/4;
-        for (let k=0;k<8;k++){ const a = k/8*Math.PI*2; const sp = part(G.box, 0xf4f4f4, 0.02,0.4,0.02, Math.cos(a)*0.2,Math.sin(a)*0.2,0); sp.rotation.z = a - Math.PI/2; fw.add(sp);
-          fw.add(part(G.box, [0xff5a5a,0xffd35a,0x7ee0ff,0x9aff7a][k%4], 0.07,0.07,0.07, Math.cos(a)*0.4,Math.sin(a)*0.4,0)); }
-        fw.add(part(G.cyl, 0xd0d0d8, 0.05,0.06,0.05, 0,0,0)).children; g.add(fw); u.spin.push([fw, 'z', 0.5]);
+      g.add(part(G.box, 0xe8d8b0, 1.9,0.05,1.9, 0,0.025,0));
+      for (let k=0;k<16;k++){ const x = -0.71 + (k%4)*0.475, z = -0.71 + Math.floor(k/4)*0.475; if ((k + Math.floor(k/4)) % 2) g.add(part(G.box, 0xf0c8b8, 0.47,0.052,0.47, x,0.026,z)); }
+      // 入場門
+      for (const x of [-0.3, 0.3]) g.add(part(G.box, 0xd84a6a, 0.07,0.5,0.07, x,0.25,0.88));
+      g.add(part(G.box, 0xf0c040, 0.7,0.12,0.06, 0,0.54,0.88)); g.add(part(G.box, 0xd84a6a, 0.74,0.03,0.08, 0,0.61,0.88));
+      for (const x of [-0.3, 0.3]) g.add(part(G.sph, 0, 0.05,0.05,0.05, x,0.53,0.92, lampMat(0xffe08a)));
+      // 回転木馬
+      const car = new THREE.Group(); car.position.set(-0.45,0,0.3);
+      car.add(part(G.cyl, 0xd84a6a, 0.42,0.08,0.42, 0,0.08,0)); car.add(part(G.cyl, 0xf0e0c0, 0.05,0.5,0.05, 0,0.36,0));
+      car.add(part(G.cone6, 0xf0c040, 0.48,0.24,0.48, 0,0.72,0)); car.add(part(G.cone6, 0xd84a6a, 0.5,0.08,0.5, 0,0.61,0));
+      for (let k=0;k<8;k++){ const a = k/8*Math.PI*2; car.add(part(G.cyl, 0xf8f8f8, 0.012,0.46,0.012, Math.cos(a)*0.32,0.37,Math.sin(a)*0.32)); car.add(part(G.box, [0xffffff,0x8ab0e0,0xf0a0a0,0xf0d080][k%4], 0.1,0.08,0.05, Math.cos(a)*0.32,0.24 + (k%2)*0.06,Math.sin(a)*0.32)); }
+      for (let k=0;k<6;k++){ const a = k/6*Math.PI*2; car.add(part(G.sph, 0, 0.03,0.03,0.03, Math.cos(a)*0.46,0.6,Math.sin(a)*0.46, lampMat([0xffd35a,0xff7a9a,0x7ee0ff][k%3]))); }
+      g.add(car); u.spin.push([car, 'y', 1.0]);
+      if (lv >= 2){ // 観覧車
+        for (const z0 of [-0.62,-0.38]){ strut(g, 0x8a8a92, 0.15,0,z0, 0.45,0.82,-0.5, 0.04); strut(g, 0x8a8a92, 0.75,0,z0, 0.45,0.82,-0.5, 0.04); }
+        const fw = new THREE.Group(); fw.position.set(0.45,0.82,-0.5);
+        for (let k=0;k<10;k++){ const a = k/10*Math.PI*2; const sp = part(G.box, 0xf4f4f4, 0.025,0.66,0.025, Math.cos(a)*0.33,Math.sin(a)*0.33,0); sp.rotation.z = a - Math.PI/2; fw.add(sp);
+          const rim = part(G.box, 0xf4f4f4, 0.025,0.21,0.025, Math.cos(a+0.31)*0.64,Math.sin(a+0.31)*0.64,0); rim.rotation.z = a + 0.31; fw.add(rim);
+          fw.add(part(G.box, [0xff5a5a,0xffd35a,0x7ee0ff,0x9aff7a,0xff9af0][k%5], 0.11,0.1,0.11, Math.cos(a)*0.66,Math.sin(a)*0.66,0)); }
+        fw.add(part(G.cyl, 0xd0d0d8, 0.07,0.12,0.07, 0,0,0)).children; g.add(fw); u.spin.push([fw, 'z', 0.4]);
       }
-      if (lv >= 3){ for (const [x, z] of [[-0.45,-0.45],[0.45,0.45],[-0.45,0.45]]) g.add(part(G.cyl, 0xf4f4f4, 0.015,0.5,0.015, x,0.25,z));
-        for (let k=0;k<7;k++) g.add(part(G.cone4, [0xff5a5a,0xffd35a,0x7ee0ff][k%3], 0.04,0.07,0.01, -0.45 + k*0.13, 0.44, 0.45 - k*0.13*0)); }
-      if (lv >= 4){ for (let k=0;k<6;k++){ const x = -0.4 + k*0.16, y = 0.12 + Math.sin(k/5*Math.PI)*0.3; g.add(part(G.box, 0xd84a3a, 0.17,0.03,0.08, x, y, -0.42)); g.add(part(G.box, 0x8a8a92, 0.02,y,0.02, x, y/2, -0.42)); } }
-      if (lv >= 5){ for (let k=0;k<5;k++){ const a = k/4*Math.PI; g.add(part(G.sph, [0xff6a8a,0xffd35a,0x7ee0ff,0x9aff7a,0xc87af0][k], 0.07,0.08,0.07, 0.42, 0.1 + Math.sin(a)*0.35, Math.cos(a)*0.35)); } }
-      u.light = [0,0.4,0.5];
+      if (lv >= 3){ // 旗の列と売店
+        for (const [x, z] of [[-0.9,-0.9],[0.9,-0.9],[-0.9,0.6],[0.9,0.6]]) g.add(part(G.cyl, 0xf4f4f4, 0.015,0.6,0.015, x,0.3,z));
+        for (let k=0;k<12;k++) g.add(part(G.cone4, [0xff5a5a,0xffd35a,0x7ee0ff][k%3], 0.05,0.08,0.01, -0.9 + k*0.164, 0.55 - Math.sin(k/11*Math.PI)*0.08, -0.9));
+        g.add(part(G.box, 0xf4ecd8, 0.3,0.26,0.24, 0.62,0.13,0.45)); g.add(part(G.box, 0xd84a4a, 0.36,0.04,0.3, 0.62,0.28,0.47));
+        for (let k=0;k<4;k++) g.add(part(G.box, k%2?0xffffff:0xd84a4a, 0.09,0.06,0.03, 0.49+k*0.09,0.31,0.62));
+      }
+      if (lv >= 4){ // ジェットコースター
+        for (let k=0;k<12;k++){ const x = -0.88 + k*0.16, y = 0.18 + Math.abs(Math.sin(k/11*Math.PI*1.5))*0.55; g.add(part(G.box, 0xd84a3a, 0.17,0.03,0.1, x, y, -0.86)); g.add(part(G.box, 0x8a8a92, 0.025,y,0.025, x, y/2, -0.86)); }
+        g.add(part(G.box, 0x4a6ab0, 0.14,0.08,0.09, -0.4,0.18 + Math.abs(Math.sin(3/11*Math.PI*1.5))*0.55 + 0.05,-0.86));
+      }
+      if (lv >= 5){ // コーヒーカップと風船
+        const cups = new THREE.Group(); cups.position.set(-0.45,0,-0.45);
+        cups.add(part(G.cyl, 0x9ad8f0, 0.34,0.03,0.34, 0,0.04,0));
+        for (let k=0;k<4;k++){ const a = k/4*Math.PI*2; cups.add(part(G.cyl, [0xff9af0,0xffd35a,0x9aff7a,0xff7a5a][k], 0.09,0.1,0.09, Math.cos(a)*0.2,0.11,Math.sin(a)*0.2)); }
+        g.add(cups); u.spin.push([cups, 'y', 1.6]);
+        for (let k=0;k<6;k++){ const a = k/6*Math.PI*2; g.add(part(G.cyl, 0xdddddd, 0.005,0.5,0.005, 0.1 + Math.cos(a)*0.06,0.3,0.55 + Math.sin(a)*0.06)); g.add(part(G.sph, [0xff6a8a,0xffd35a,0x7ee0ff,0x9aff7a,0xc87af0,0xff9a40][k], 0.07,0.085,0.07, 0.1 + Math.cos(a)*0.12, 0.6 + (k%2)*0.08, 0.55 + Math.sin(a)*0.12)); }
+      }
+      u.light = [0,0.4,0.95];
       break; }
     case 'forester':
       g.add(part(G.box, 0x9a7a50, 0.45,0.34,0.45, -0.1,0.17,-0.05)); roof(g, 0.5, 0.3, 0.34, 0x3a8a4a);
@@ -712,9 +770,32 @@ function makeBuilding(type, r=0.5, b=null){
       g.add(part(G.cyl, 0x666666, 0.07,0.6,0.07, -0.3,0.75,-0.25)); u.smoke=[-0.3,1.06,-0.25];
       win(g, -0.2,0.25,0.405); win(g, 0.1,0.25,0.405); u.light=[0,0.4,0.6];
       break; }
+    case 'recycle': {
+      g.add(part(G.box, 0x6a8a6a, 0.62,0.4,0.55, -0.1,0.2,-0.05));
+      const rf = part(G.box, 0x4a6a4a, 0.72,0.05,0.65, -0.1,0.44,-0.05); rf.rotation.x = -0.18; g.add(rf);
+      g.add(part(G.box, 0x3a2a1a, 0.24,0.24,0.03, -0.1,0.12,0.23));
+      for (let k=0;k<6;k++) g.add(part([G.dod, G.box, G.cyl][k%3], [0x8a8a92,0xa05a3a,0x6a6a72][k%3], 0.09,0.07,0.09, 0.3 + (k%3)*0.08 - 0.08, 0.04 + Math.floor(k/3)*0.06, 0.25 + (k%2)*0.08));
+      g.add(part(G.box, 0x5a5a60, 0.05,0.62,0.05, 0.38,0.31,-0.25));
+      const arm = part(G.box, 0xe8b840, 0.42,0.05,0.05, 0.28,0.62,-0.1); arm.rotation.y = 0.9; g.add(arm);
+      g.add(part(G.cyl, 0x3a3a44, 0.06,0.04,0.06, 0.2,0.48,0.05));
+      g.add(part(G.cyl, 0x666666, 0.06,0.5,0.06, -0.3,0.65,-0.2)); u.smoke = [-0.3,0.92,-0.2];
+      win(g, 0.1,0.26,0.235); u.light = [0,0.4,0.5];
+      break; }
+  }
+  // 夜のランタン（建物ごとに色と場所がちがう）
+  const LANT = {
+    warehouse:[[-0.3,0.42,0.42,0xff7a5a],[-0.1,0.38,0.44,0xffd35a],[0.1,0.38,0.44,0x7ee0ff],[0.3,0.42,0.42,0x9aff7a]],
+    house:[[-0.22,0.25,0.27,0xffd890]], camp:[[-0.42,0.34,0.32,0xffa040,1]], quarry:[[0.02,0.45,0.15,0xffc060]],
+    sawmill:[[-0.44,0.3,0.32,0xffb860,1]], forester:[[0.12,0.26,0.25,0xd8ff90]], workshop:[[0.3,0.33,0.33,0xffe0a0]],
+    factory:[[0.42,0.44,0.42,0xe0f0ff]], bakery:[[-0.3,0.3,0.32,0xff9a50]], bath:[[-0.14,0.37,0.3,0xff5a3a],[0.14,0.37,0.3,0xff5a3a]],
+    recycle:[[0.0,0.46,0.25,0xa8ffa0]], smelter:[[0.3,0.36,0.32,0xffb060]],
+  }[type] || [];
+  for (const [x, y, z, hex, post] of LANT){
+    g.add(part(G.box, 0, 0.06,0.07,0.06, x,y,z, lampMat(hex)));
+    if (post) g.add(part(G.box, 0x3a3a44, 0.02,y,0.02, x,y/2-0.03,z));
   }
   // 隣の建物とのあいだに隙間をあける（住民が通るのが見えるように）
-  const BS = type === 'house' ? 0.9 : type === 'fun' ? 1.3 : type === 'park' ? 1 : 0.8;
+  const BS = type === 'house' ? 0.9 : BUILD[type]?.size === 2 ? 1 : 0.8;
   const inner = new THREE.Group(); inner.scale.setScalar(BS);
   while (g.children.length) inner.add(g.children[0]);
   g.add(inner); u.inner = inner;
@@ -723,6 +804,7 @@ function makeBuilding(type, r=0.5, b=null){
   const sc = new THREE.Group();
   for (const [x,z] of [[-.4,-.4],[.4,-.4],[-.4,.4],[.4,.4]]) sc.add(part(G.box, 0xc8a060, 0.04,0.8,0.04, x,0.4,z));
   for (const y of [0.3, 0.7]) for (const [x,z,sx,sz] of [[0,-.4,.84,.04],[0,.4,.84,.04],[-.4,0,.04,.84],[.4,0,.04,.84]]) sc.add(part(G.box, 0xc8a060, sx,0.04,sz, x,y,z));
+  if (BUILD[type]?.size === 2) sc.scale.set(2.2, 1.2, 2.2);
   sc.visible = false; g.add(sc); u.scaffold = sc;
   return g;
 }
@@ -745,7 +827,7 @@ let pickables = [];
 function rebuildPickables(){ pickables = []; for (const g of CM) if (g) pickables.push(g); }
 function setCellMesh(i){
   if (CM[i]) { scene.remove(CM[i]); CM[i] = null; }
-  const c = S.cells[i], p = wpos(i); let g = null;
+  const c = S.cells[i], p = c.t === 'b' ? bCenter(i) : wpos(i); let g = null;
   if (c.t === 'tree' || c.t === 'sapling') g = makeTree(c);
   else if (c.t === 'rock') g = makeRock(c);
   else if (c.t === 'b') g = makeBuilding(c.b.type, c.r, c.b);
@@ -769,19 +851,22 @@ const isNight = () => { const h = hourOf(S.time); return h >= 19.25 || h < 5.5; 
 const workTime = () => (!isNight() || (S.nightShift && S.meteorNight !== S.day)) && S.flags.holidayDay !== S.day && S.strikeDay !== S.day;
 const festActive = () => S.festDay === S.day && hourOf(S.time) >= 17;
 const holidayNow = () => S.flags.holidayDay === S.day && !isNight();
+const starWatch = () => S.meteorNight === S.day && isNight() && hourOf(S.time) >= 19 && hourOf(S.time) < 23.5;   // 流れ星の夜はみんなで広場から空を見る
 const moodF = () => (0.5 + S.mood/100) * (S.boostDay === S.day ? 1.4 : 1);
 const carryCap = () => 2 + S.upg.carry;
 const haulCap = () => P.haulCap + 2*S.upg.carry;
 const bufCap = b => 6 + 3*b.lvl;
-const slots = b => (b.type === 'warehouse' || BUILD[b.type].job || BUILD[b.type].in) ? Math.min(6, b.lvl + 1) : 0;
+const staffed = d => !!(d.job || d.in || d.gen);          // 住民が働く建物
+const slots = b => (b.type === 'warehouse' || staffed(BUILD[b.type])) ? Math.min(6, b.lvl + 1) : 0;
 const hireCost = () => Math.round(P.hireBase * Math.pow(P.hireGrow, workerCount()));
 const stTotal = b => { let n = 0; for (const k in b.st || {}) n += b.st[k]; return n; };
-const stCap = b => BUILD[b.type].in ? bufCap(b) : 10 + 5*b.lvl;
+const stCap = b => (BUILD[b.type].in || BUILD[b.type].gen) ? bufCap(b) : 12 + 12*b.lvl;   // 木こり小屋・採掘場はレベルで大きく増える
 function stAdd(b, it, n){ b.st = b.st || {}; b.st[it] = (b.st[it] || 0) + n; }
 function stMain(b){ let best = null, bn = 0; for (const k in b.st || {}) if (b.st[k] >= 1 && b.st[k] > bn){ bn = b.st[k]; best = k; } return best; }
 function buildCost(type){
-  const d = BUILD[type], n = countB(type);
-  return {g: Math.round(d.cost.g * Math.pow(type==='house'?1.25:type==='park'?1.2:1.35, n))};
+  const d = BUILD[type], n = countB(type), k = Math.pow(type==='house'?1.25:type==='park'?1.2:1.35, n), c = {};
+  for (const key in d.cost) c[key] = Math.round(d.cost[key] * k);
+  return c;
 }
 const lvlCost = b => Math.round(BUILD[b.type].cost.g * 1.5 * Math.pow(1.8, b.lvl-1));
 function price(it){
@@ -826,19 +911,25 @@ function sell(it, n, silent){
   if (!silent){ popAt(wpos(WH).x, 1.2, wpos(WH).z, '+'+fmt(earn)+'G', 'g'); coinBurst(Math.min(8, 1+Math.floor(earn/60))); sfx('coin'); }
   return earn;
 }
-function canPay(c){ return S.gold >= c.g; }
-function pay(cost){ if (!canPay(cost)) return false; S.gold -= cost.g; return true; }
-function costTxt(c){ return fmt(c.g)+'G'; }
+// 建設費：お金＋一部は鉄（鉄鉱石・インゴット）
+function canPay(c){ return S.gold >= (c.g || 0) && Object.keys(c).every(k => k === 'g' || (S.items[k] || 0) >= c[k]); }
+function pay(cost){ if (!canPay(cost)) return false; for (const k in cost){ if (k === 'g') S.gold -= cost.g; else S.items[k] -= cost[k]; } return true; }
+function costTxt(c){ return fmt(c.g || 0)+'G' + Object.keys(c).filter(k=>k!=='g').map(k=>' + '+N(ITEMS[k].n)+c[k]).join(''); }
+function lackTxt(c){ if (S.gold < (c.g || 0)) return L('お金が足りない','Not enough gold'); const k = Object.keys(c).find(k => k !== 'g' && (S.items[k] || 0) < c[k]); return k ? L(N(ITEMS[k].n)+'が足りない（市場に'+c[k]+'個必要）','Not enough '+N(ITEMS[k].n)+' (need '+c[k]+' at the market)') : ''; }
 const reqOk = d => !d.req || (d.req === 'airport' ? S.airport : !!S.flags[d.req]);
 
 /* ---- 建設・移動・撤去 */
-function canPlace(type, i){
-  const c = S.cells[i];
-  if (c.t === 'void') return L('島の外です（新エリアで島を広げられる）','Outside the island (expand it from New Areas)');
-  if (c.t === 'b') return L('すでに建物がある','Already built here');
-  if (c.t === 'rock') return L('岩がある','A rock is here');
+function canPlace(type, i, sz){
+  sz = sz || (type ? BUILD[type].size || 1 : 1);
+  if (cx(i) + sz > W || cz(i) + sz > W) return L('島の外です（新エリアで島を広げられる）','Outside the island (expand it from New Areas)');
+  for (const j of footCells(i, sz)){
+    const c = S.cells[j];
+    if (c.t === 'void') return L('島の外です（新エリアで島を広げられる）','Outside the island (expand it from New Areas)') + (sz > 1 ? L('（2×2マス必要）',' (needs 2×2)') : '');
+    if (c.t === 'b' || c.t === 'occ') return L('すでに建物がある','Already built here') + (sz > 1 ? L('（2×2マス必要）',' (needs 2×2)') : '');
+    if (c.t === 'rock') return L('岩がある','A rock is here');
+  }
   if (type && !reqOk(BUILD[type])) return L('まだ建てられない','Not unlocked yet');
-  if (type && !canPay(buildCost(type))) return L('お金が足りない','Not enough gold');
+  if (type && !canPay(buildCost(type))) return lackTxt(buildCost(type));
   return '';
 }
 function newB(type){ return {type, lvl:1, workers:0, inb:0, st:{}, prog:0, build:P.buildTime, buildMax:P.buildTime}; }
@@ -849,23 +940,35 @@ function clearSpot(i){
 }
 function place(type, i){
   if (canPlace(type, i)) return false;
-  pay(buildCost(type)); clearSpot(i);
+  pay(buildCost(type));
+  const sz = BUILD[type].size || 1; for (const j of footCells(i, sz)){ clearSpot(j); if (j !== i){ S.cells[j] = {t:'occ', of:i}; setCellMesh(j); } }
   const b = newB(type); if (type === 'house') b.look = houseLook(null, Math.random());
   S.cells[i] = {t:'b', r:Math.random(), b};
   setCellMesh(i); CM[i].userData.pop = 0.35; sfx('build'); shake(0.06);
-  burst(wpos(i).x, 0.3, wpos(i).z, 'stone', 6);
+  burst(bCenter(i).x, 0.3, bCenter(i).z, 'stone', 6);
   assignLights();
   if (type === 'fun' && countB('fun') === 1) eventQueue.push({result:true, img:'skyfair', title:L('空の遊園地、開園！','The Sky Fair opens!'), text:L('回転木馬がまわりはじめた。飛行船の観光客たちが、さっそく列をつくっている。レベルを上げると乗り物が増える。','The carousel starts to turn, and airship tourists are already lining up. Level it up for more rides.')});
   return true;
 }
+function moveWhy(from, to){
+  const sz = bSize(from);
+  if (from === to) return L('同じ場所','Same spot');
+  if (S.gold < P.moveCost) return L('お金が足りない','Not enough gold');
+  if (cx(to) + sz > W || cz(to) + sz > W) return L('島の外です','Outside the island');
+  const mine = new Set(footCells(from, sz));
+  for (const j of footCells(to, sz)){ if (mine.has(j)) continue; const c = S.cells[j];
+    if (c.t === 'void') return L('島の外です','Outside the island'); if (c.t === 'b' || c.t === 'occ') return L('すでに建物がある','Already built here'); if (c.t === 'rock') return L('岩がある','A rock is here'); }
+  return '';
+}
 function moveBuilding(from, to){
-  if (from === to || canPlace(null, to) || S.gold < P.moveCost) return false;
+  if (moveWhy(from, to)) return false;
   S.gold -= P.moveCost;
-  const src = S.cells[from], b = src.b;
-  clearSpot(to);
+  const src = S.cells[from], b = src.b, sz = bSize(from), oldF = footCells(from, sz);
+  for (const j of oldF) S.cells[j] = {t:'grass', r:Math.random()};
+  for (const j of footCells(to, sz)){ clearSpot(j); if (j !== to) S.cells[j] = {t:'occ', of:to}; }
   b.build = P.moveTime; b.buildMax = P.moveTime;
   S.cells[to] = {t:'b', r:src.r, b};
-  S.cells[from] = {t:'grass', r:Math.random()};
+  for (const j of oldF) if (S.cells[j].t === 'grass') setCellMesh(j);
   for (const w of workers) if (w.bi === from){ release(w); w.bi = to; w.tasks = []; w.under = false; }
   delete haulRes[from];
   setCellMesh(from); setCellMesh(to); CM[to].userData.pop = 0.35;
@@ -879,7 +982,8 @@ function demolish(i){
   S.gold += Math.round(BUILD[b.type].cost.g * 0.4);
   if (BUILD[b.type].in) S.items[BUILD[b.type].in] += b.inb;
   for (const k in b.st || {}) S.items[k] += Math.floor(b.st[k]);
-  S.cells[i] = {t:'grass', r:Math.random()}; setCellMesh(i); assignLights(); select(-1);
+  for (const j of footCells(i, bSize(i))){ S.cells[j] = {t:'grass', r:Math.random()}; setCellMesh(j); }
+  assignLights(); select(-1);
 }
 function hire(i){
   const b = S.cells[i].b;
@@ -919,7 +1023,7 @@ function removeWorker(bi){
   release(w); scene.remove(w.mesh); workers.splice(idx, 1); S.cells[bi].b.workers--; assignHomes();
 }
 const whPt = w => ({x: wpos(WH).x + w.ox, z: wpos(WH).z - 0.5});
-const bPt = (i, w) => { const p = wpos(i); return {x:p.x + w.ox, z: Math.min(W/2 - 0.15, p.z + 0.42)}; };
+const bPt = (i, w) => { const p = bCenter(i), k = bSize(i); return {x:p.x + w.ox, z: Math.min(W/2 - 0.15, p.z + 0.42*k)}; };
 const PLAZA = {x: wpos(WH).x, z: wpos(WH).z - 1.7};
 // 住まい：職場に近い家から順に、空きのある家へ（あふれた人は市場で寝る）
 function assignHomes(){
@@ -951,11 +1055,14 @@ function findNearest(kind, from){
 }
 const upIf = w => w.under ? [{k:'up'}] : [];
 const canDig = () => S.flags.mine && S.res.ore > 0;
+// 鉄（鉄鉱石・インゴット）を使う建物で、まだ1つも建てていないものがあるか
+const ironWanted = () => Object.entries(BUILD).some(([k, d]) => !d.hidden && (d.cost.ore || d.cost.ingot) && reqOk(d) && !countB(k)) && !countB('recycle');
 function plan(w){
   const c = S.cells[w.bi]; if (!c || c.t !== 'b') return [{k:'wait', d:1}];
   const b = c.b;
   if (festActive()){ const a = Math.random()*Math.PI*2, r = 0.5 + Math.random()*0.4; return [...upIf(w), {k:'go', x:PLAZA.x + Math.cos(a)*r, z:PLAZA.z + Math.sin(a)*r}, {k:'dance', d:rnd(3,6)}]; }
-  if (holidayNow()){ const land = S.cells.map((c,i)=>c.t==='void'||c.t==='b'?-1:i).filter(i=>i>=0), p = wpos(land[Math.floor(Math.random()*land.length)]); return [...upIf(w), {k:'go', x:p.x + rnd(-.3,.3), z:p.z + rnd(-.3,.3)}, {k:'dance', d:rnd(2,4), calm:true}]; }
+  if (starWatch()){ const a = Math.random()*Math.PI*2, r = 0.6 + Math.random()*0.9; return [...upIf(w), {k:'go', x:PLAZA.x + Math.cos(a)*r, z:PLAZA.z + Math.sin(a)*r}, {k:'dance', d:rnd(5,9), calm:true, star:true}]; }
+  if (holidayNow()){ const land = S.cells.map((c,i)=>c.t==='void'||c.t==='b'||c.t==='occ'?-1:i).filter(i=>i>=0), p = wpos(land[Math.floor(Math.random()*land.length)]); return [...upIf(w), {k:'go', x:p.x + rnd(-.3,.3), z:p.z + rnd(-.3,.3)}, {k:'dance', d:rnd(2,4), calm:true}]; }
   if (offDuty(w)) return [...upIf(w), {k:'go', ...homePt(w), home:true}, {k:'sleep'}];
   if (b.broken || b.build > 0) return [...upIf(w), {k:'go', ...bPt(w.bi,w)}, {k:'wait', d:1.5}];
   if (w.job === 'haul') return planHaul(w);
@@ -1014,11 +1121,11 @@ function walkSpeed(w, t){
 }
 function updateWorker(w, dt){
   w.work = false; w.dance = 0;
-  if (w.sleep){ if (!offDuty(w) || festActive() || holidayNow()){ w.sleep = false; w.mesh.visible = true; w.tasks = []; } else return; }
+  if (w.sleep){ if (!offDuty(w) || festActive() || holidayNow() || starWatch()){ w.sleep = false; w.mesh.visible = true; w.tasks = []; } else return; }
   if (!w.tasks.length) w.tasks = plan(w);
   const t = w.tasks[0]; if (!t) return;
   // 帰る時間になったら、手ぶらなら作業を切り上げて家へ
-  if (!t.home && t.k !== 'sleep' && t.k !== 'dance' && !w.carry && offDuty(w) && !festActive() && !holidayNow()){ release(w); w.tasks = []; return; }
+  if (!t.home && t.k !== 'sleep' && t.k !== 'dance' && !w.carry && offDuty(w) && !festActive() && !holidayNow() && !starWatch()){ release(w); w.tasks = []; return; }
   const cb = S.cells[w.bi]; if (cb.t !== 'b'){ w.tasks = []; return; }
   const b = cb.b;
   switch (t.k){
@@ -1030,7 +1137,7 @@ function updateWorker(w, dt){
       break; }
     case 'wait': t.d -= dt; if (t.d <= 0) w.tasks.shift(); break;
     case 'op': t.d -= dt; w.work = true; w.t += dt; if (t.d <= 0) w.tasks.shift(); break;
-    case 'dance': t.d -= dt; w.dance = t.calm ? 1 : 2; if (Math.random() < dt*0.25) popAt(w.x, 0.7, w.z, '♪'); if (t.d <= 0) w.tasks.shift(); break;
+    case 'dance': t.d -= dt; w.dance = t.calm ? 1 : 2; if (Math.random() < dt*0.25) popAt(w.x, 0.7, w.z, t.star ? '☆' : '♪'); if (t.d <= 0) w.tasks.shift(); break;
     case 'sleep': w.sleep = true; w.mesh.visible = false; w.tasks = []; break;
     case 'down': w.under = true; w.tasks.shift(); break;
     case 'up': { w.under = false; const p = bPt(w.bi, w); w.x = p.x; w.z = p.z; w.tasks.shift(); break; }
@@ -1112,6 +1219,7 @@ function collect(i){
 
 /* ---- クリック（手作業） */
 function clickCell(i){
+  if (S.cells[i].t === 'occ') i = S.cells[i].of;
   const c = S.cells[i], p = wpos(i);
   if (c.t === 'tree'){
     const n = (1 + S.upg.axe) * (c.gold ? 3 : 1);
@@ -1168,6 +1276,12 @@ function onDawn(){
     const g = S.cells.map((c,i)=>c.t==='grass' && !allB().some(j=>cheb(i,j)<=1) ? i : -1).filter(i=>i>=0);
     if (g.length){ const i = g[Math.floor(Math.random()*g.length)]; S.cells[i] = {t:'rock', hp:P.rockHP, r:Math.random()}; setCellMesh(i); CM[i].userData.pop = 0.4; }
   }
+  // 鉄がいる建物をまだ建てていないのに鉄鉱石の出どころが尽きたら、岩がわずかに戻ってくる
+  if (!S.cells.some(c=>c.t==='rock') && !canDig() && ironWanted()){
+    const g = S.cells.map((c,i)=>c.t==='grass' && i !== WH && !allB().some(j=>cheb(i,j)<=1) ? i : -1).filter(i=>i>=0).sort(()=>Math.random()-.5).slice(0, 2);
+    for (const i of g){ S.cells[i] = {t:'rock', hp:P.rockHP, r:Math.random()}; setCellMesh(i); CM[i].userData.pop = 0.4; }
+    if (g.length) toast(L('島のどこかに、新しい岩が顔を出した','A few new rocks have surfaced on the island'), 'good');
+  }
   if (S.meteorNight === S.day - 1){
     addMood(12);
     const gift = Math.random() < 0.5 ? Math.round(rnd(200, 600)) : 0;
@@ -1181,13 +1295,8 @@ function onDawn(){
     const bonus = Math.round(v * 0.45); S.gold += bonus; S.stats.earned += bonus;
     eventQueue.push({result:true, img:'nightorder_ok', title:L('特急便、出発！','The dawn express departs!'), text: n ? L('夜のうちに作った加工品 '+n+'個を積みこんだ。<b>ボーナス +'+fmt(bonus)+'G</b>（品物は市場に残る）', n+' crafted goods made overnight were loaded. <b>Bonus +'+fmt(bonus)+'G</b> (you keep the goods)') : L('残念、夜のあいだに加工品はできなかった……。','Sadly, nothing was crafted overnight…')});
   }
-  if (S.airport){
-    const fl = allB('fun').reduce((a,i)=>a + S.cells[i].b.lvl, 0);
-    const n = Math.max(1, Math.round((2 + 3*S.airLvl) * (1 + 0.6*fl) * (0.5 + S.mood/100))), inc = n * (15 + 12*fl);
-    S.gold += inc; S.stats.earned += inc; S.stats.tourists = (S.stats.tourists || 0) + n;
-    toast(L('観光客 '+n+'人が来た +'+fmt(inc)+'G', n+' tourists came +'+fmt(inc)+'G'), 'good');
-  }
   if (S.tut < 0) queueEvent();
+  backup('dawn');
 }
 
 /* ---- 毎フレームの経済 */
@@ -1196,7 +1305,7 @@ function sim(dt){
   S.time += dt;
   if (S.time >= P.dayLen){ S.time -= P.dayLen; onDawn(); }
   if (S.nightShift && isNight() && workerCount()) S.nightUsed = true;
-  wearAcc += dt; if (wearAcc >= 2){ wearAcc = 0; decayRoutes(); }
+  wearAcc += dt; if (wearAcc >= 2){ wearAcc = 0; decayRoutes(); wearSocial(); }
   for (const k of ITEM_KEYS) S.sat[k] += (1 - S.sat[k]) * (S.sat[k] < 1 ? P.satRecover : 0.004) * dt;
   regrowAcc += dt;
   const regMul = (S.flags.steam ? 0.5 : 1) * (S.flags.forest ? 2 : 1) * (S.day < S.flags.protectUntil ? 3 : 1) * (S.rainDay === S.day ? 3 : 1);
@@ -1220,7 +1329,13 @@ function sim(dt){
   for (let i=0;i<W*W;i++){
     const c = S.cells[i]; if (c.t !== 'b') continue; const b = c.b, d = BUILD[b.type]; b._working = false;
     if (b.build > 0){ b.build = Math.max(0, b.build - dt); if (!b.build){ if (CM[i]) CM[i].userData.pop = 0.3; sfx('hire'); } continue; }
-    if (d.in){
+    // 満杯が長く続いたときだけ注意を出す（運搬が一時的に追いつかないだけなら出さない）
+    if (staffed(d)) b._fullT = stTotal(b) >= stCap(b) ? (b._fullT || 0) + dt : 0;
+    if (d.gen){
+      if (b.broken || !ops[i] || !canWork || stTotal(b) >= stCap(b)) continue;
+      b._working = true; b.prog += dt * speedMult(i) * (1 + 0.5*(ops[i]-1));
+      if (b.prog >= d.time){ b.prog -= d.time; stAdd(b, d.gen, 1); S.stats.made[d.gen]++; S.seen[d.gen] = true; S.stats.recycled = (S.stats.recycled || 0) + 1; if (CM[i]) CM[i].userData.hit = 0.12; }
+    } else if (d.in){
       if (b.broken || !ops[i] || !canWork) continue;
       if (b.inb >= 1 && stTotal(b) < bufCap(b)){
         b._working = true; b.prog += dt * speedMult(i) * (1 + 0.5*(ops[i]-1));
@@ -1256,6 +1371,7 @@ function sim(dt){
     else if (trade.state === 'docked'){ trade.state = 'leave'; trade.t = 4; }
     else { trade.state = 'away'; trade.t = P.balloonEvery; }
   }
+  if (S.airport) tourCheck();
   moodAcc += dt;
   if (moodAcc >= 0.5){
     const tgt = moodTarget(), d = tgt - S.mood; S.mood += Math.sign(d) * Math.min(Math.abs(d), 0.12*moodAcc);
@@ -1388,13 +1504,13 @@ const EVENTS = [
         return {img:'quake', title:L('島が揺れた！','The island shook!'), text:L('島全体が傾き、貯まっていた物が半分こぼれ落ちた。修繕を考えたほうがいい。','The whole island tilted and half of the stored goods fell. Better repair it soon.')}; }},
     ]};
   }},
-  {id:'pirates', w:1.5, cond:()=>S.day >= 5 && S.gold >= 1500, make:()=>{
+  {id:'pirates', w:1.5, cond:()=>S.day >= 5 && S.gold >= 1500 && S.day >= (S.flags.pirateFree || 0), make:()=>{
     const toll = Math.round(S.gold*0.15);
     return {img:'pirates', title:L('空賊の影','Sky pirates!'), text:L('ドクロの帆の飛行船が近づいてきた。「通行料に '+fmt(toll)+'G よこしな」','A skull-sailed airship approaches. "Pay '+fmt(toll)+'G, or else."'), opts:[
       {l:L('通行料を払う','Pay the toll'), d:L('確実に去っていく','They leave for sure'), f:()=>{ S.gold -= toll; story('空賊に通行料を払った','Paid the sky pirates'); }},
-      {l:L('見張りを立てて追い返す','Stand guard'), d:L('60%：撃退して落とし物 +'+fmt(Math.round(toll*0.6))+'G、幸福 +6／40%：市場の品物を3割奪われる','60%: repel them, loot +'+fmt(Math.round(toll*0.6))+'G, happiness +6 / 40%: lose 30% of market goods'), f:()=>{
-        if (Math.random() < 0.6){ const loot = Math.round(toll*0.6); S.gold += loot; addMood(6); story('空賊を追い返した','Drove off the sky pirates');
-          return {img:'pirates_win', title:L('空賊を撃退！','Pirates repelled!'), text:L('見張りの合図で鐘を鳴らし、みんなで追い返した。空賊は慌てて逃げていった。<b>落とし物 +'+fmt(loot)+'G・幸福 +6</b>','The lookout rang the bell and everyone drove them off. <b>Loot +'+fmt(loot)+'G, happiness +6</b>')}; }
+      {l:L('見張りを立てて追い返す','Stand guard'), d:L('60%：撃退。お金は払わずにすみ、幸福 +8、しばらく空賊は来ない／40%：市場の品物を3割奪われる','60%: drive them off. No toll, happiness +8, and they stay away for a while / 40%: lose 30% of market goods'), f:()=>{
+        if (Math.random() < 0.6){ addMood(8); S.flags.pirateFree = S.day + 7; story('空賊を追い返した','Drove off the sky pirates');
+          return {img:'pirates_win', title:L('空賊を撃退！','Pirates repelled!'), text:L('見張りの合図で鐘を鳴らし、みんなで追い返した。空賊は慌てて逃げていった。<b>通行料はゼロ・幸福 +8</b>。しばらくは近づいてこないだろう。','The lookout rang the bell and everyone drove them off. <b>No toll paid, happiness +8.</b> They won’t be back for a while.')}; }
         const lost = []; for (const k of ITEM_KEYS){ const n = Math.floor(S.items[k]) - Math.floor(S.items[k]*0.7); if (n > 0) lost.push(N(ITEMS[k].n)+' -'+n); S.items[k] = Math.floor(S.items[k]*0.7); }
         addMood(-4); story('空賊に市場を荒らされた','Pirates raided the market');
         return {img:'pirates_lose', title:L('市場が荒らされた…','The market was raided…'), text:L('見張りの隙をつかれ、市場の品物が持ち去られた。','They slipped past the guard and carried off goods.')+'<br><b>'+(lost.join('・') || L('（品物はほとんどなかった）','(there was little to take)'))+'</b>'}; }},
@@ -1546,7 +1662,7 @@ function showEnding(){
     '<h4 style="color:var(--hi);font-weight:normal;margin:10px 0 4px">'+L('島の歩み','Your story')+'</h4><div class="kv">' + (S.story.length ? S.story.slice(-10).map(s=>'Day'+s.d+'：'+N(s.t)).join('<br>') : L('（大きな決断はしなかった）','(No big decisions)')) + '</div>' +
       '<p class="kv" style="color:var(--sub)">'+L('飛行船の船長「次は<b>酪農の島</b>へ案内しよう。その先には<b>農耕の島</b>もあるぞ。この島はこのまま残しておくから安心してくれ」（準備中）','Captain: "Next I’ll take you to the <b>Dairy Island</b>, and beyond that the <b>Farm Island</b>. This island will stay just as you leave it." (coming soon)')+'</p>' +
     '<p class="kv">'+L('このあとは：<b>飛行船の改装</b>（新エリア）と<b>『空の遊園地』</b>（建設→暮らし）で観光客を呼ぼう。','What’s next: <b>refit the airship</b> (New Areas) and build a <b>Sky Fair</b> (Build → Living) to draw tourists.')+'</p>' +
-    '<div class="opts"><button class="opt" data-act="closeModal"><div class="n">▶ '+L('このまま島を育てる','Keep building this island')+'</div></button><button class="opt" data-act="reset"><div class="n">▶ '+L('新しい島で別の道を試す','Try another path on a new island')+'</div><div class="d">'+L('選択が違えば、称号も変わる','Different choices, different title')+'</div></button></div>');
+    '<div class="opts"><button class="opt" data-act="closeModal"><div class="n">▶ '+L('このまま島を育てる','Keep building this island')+'</div></button><button class="opt" data-act="confirmReset"><div class="n">▶ '+L('この島を最初からやり直して別の道を試す','Start this island over and try another path')+'</div><div class="d">'+L('選択が違えば、称号も変わる（今の島は「前のセーブに戻す」で戻せる）','Different choices, different title (you can restore this island later)')+'</div></button></div>');
   $('#modal').hidden = false; sfx('fanfare');
 }
 
@@ -1578,7 +1694,7 @@ function makeCritter(type){
   }
   return g;
 }
-function landCells(pred){ const r = []; for (let i=0;i<W*W;i++){ const c = S.cells[i]; if (c.t !== 'void' && c.t !== 'b' && c.t !== 'rock' && (!pred || pred(i))) r.push(i); } return r; }
+function landCells(pred){ const r = []; for (let i=0;i<W*W;i++){ const c = S.cells[i]; if (c.t !== 'void' && c.t !== 'b' && c.t !== 'occ' && c.t !== 'rock' && (!pred || pred(i))) r.push(i); } return r; }
 function spawnCritters(){
   const add = (type, n) => { for (let k=0;k<n;k++){ const m = makeCritter(type); const Lc = landCells(); const i = Lc[Math.floor(Math.random()*Lc.length)], p = wpos(i);
     const c = {type, mesh:m, x:p.x, z:p.z, tx:p.x, tz:p.z, t:rnd(0,3), y:0, vy:0, ph:Math.random()*6, a:Math.random()*6, r:rnd(2.5,6), h:rnd(1.8,3)};
@@ -1619,22 +1735,39 @@ function updateCritters(dt){
     m.position.set(c.x, c.y, c.z);
   }
 }
-// 観光客：空港の桟橋から降りて、遊園地（なければ広場）を見物して帰る
-const tourists = [];
+// 観光客：着いた飛行船からおりて、遊園地・公園・広場を見物し、夕方に飛行船へ戻る（歩いたところは道になる）
+const tourists = []; let tourSpawnDay = -1;
+function tourSpots(){
+  const r = [];
+  for (const i of allB('fun')) for (let k=0;k<3;k++) r.push(bCenter(i));
+  for (const i of allB('park')) r.push(bCenter(i));
+  for (const i of [...allB('bakery'), ...allB('bath')]) r.push(bPt(i, {ox:0}));
+  r.push(PLAZA);
+  return r;
+}
 function updateTourists(dt){
-  const want = S.airport && !isNight() ? Math.min(8, 1 + S.airLvl + countB('fun')*2) : 0;
-  while (tourists.length < want){ const m = makeWorkerMesh('tour'); const e = dockEdge(); scene.add(m); tourists.push({m, x:e.x + rnd(-.3,.3), z:e.z - 0.2, tx:e.x, tz:e.z - 0.2, t:rnd(0,3), out:true, ph:Math.random()*6}); }
-  while (tourists.length > want) scene.remove(tourists.pop().m);
-  for (const T of tourists){
-    const dx = T.tx - T.x, dz = T.tz - T.z, Ln = Math.hypot(dx, dz), u = T.m.userData;
-    if (Ln > 0.03){ const st = Math.min(Ln, 0.8*dt); T.x += dx/Ln*st; T.z += dz/Ln*st; T.m.rotation.y = Math.atan2(dx, dz); T.ph += dt*14; }
-    else if ((T.t -= dt) <= 0){
-      const fun = allB('fun'), e = dockEdge();
-      if (T.out){ const f = fun.length ? wpos(fun[Math.floor(Math.random()*fun.length)]) : PLAZA; T.tx = f.x + rnd(-.45,.45); T.tz = f.z + rnd(-.45,.45); T.t = rnd(3,7); }
-      else { T.tx = e.x + rnd(-.3,.3); T.tz = e.z - 0.2; T.t = rnd(1,3); }
-      T.out = !T.out;
-    }
-    const mv = Ln > 0.03, bob = mv ? Math.abs(Math.sin(T.ph))*0.035 : 0;
+  const ph = S.airport ? airPhase() : {st:'away'}, e = dockEdge(), pad = {x:e.x, z:e.z + 1.3}, gate = {x:e.x, z:e.z - 0.25};
+  if (ph.st !== 'docked'){ while (tourists.length) scene.remove(tourists.pop().m); }   // 出発した＝全員乗りこんだ
+  if (ph.st === 'docked' && !ph.board && S.tourDay === S.day && tourSpawnDay !== S.day && S.day !== S.airFirst){
+    tourSpawnDay = S.day;
+    const n = Math.min(10, S.tourN || 3);
+    for (let k=0;k<n;k++){ const m = makeWorkerMesh('tour'); m.visible = false; scene.add(m); tourists.push({m, x:pad.x + rnd(-.3,.3), z:pad.z + rnd(-.3,.3), path:[gate], wait:k*1.2, back:false, ph:Math.random()*6}); }
+  }
+  for (let q = tourists.length-1; q >= 0; q--){
+    const T = tourists[q], u = T.m.userData;
+    if (T.wait > 0){ T.wait -= dt; continue; }
+    T.m.visible = true;
+    if (ph.board && !T.back){ T.back = true; T.path = [gate, pad]; T.key = undefined; }
+    const tg = T.path[0];
+    let mv = false;
+    if (tg){
+      if (T.key === undefined){ T.key = routeKey(T.x, T.z, tg.x, tg.z); T.len = Math.hypot(tg.x - T.x, tg.z - T.z); }
+      const dx = tg.x - T.x, dz = tg.z - T.z, Ln = Math.hypot(dx, dz), st = 0.8*dt;
+      if (Ln <= st){ T.x = tg.x; T.z = tg.z; T.path.shift(); T.key = undefined; if (!T.path.length) T.wait = T.back ? 0 : rnd(3, 7); }
+      else { T.x += dx/Ln*st; T.z += dz/Ln*st; T.m.rotation.y = Math.atan2(dx, dz); T.ph += dt*14; mv = true; if (T.key) wearRoute(T.key, T.len, dt*0.6); }
+    } else if (T.back){ scene.remove(T.m); tourists.splice(q, 1); continue; }
+    else { const sp = tourSpots(), p = sp[Math.floor(Math.random()*sp.length)]; T.path = [{x:p.x + rnd(-.35,.35), z:p.z + rnd(-.35,.35)}]; }
+    const bob = mv ? Math.abs(Math.sin(T.ph))*0.035 : 0;
     u.body.position.y = 0.13 + bob; u.head.position.y = 0.27 + bob; u.hat.position.y = 0.35 + bob;
     u.legL.position.z = mv ? Math.sin(T.ph)*0.035 : 0; u.legR.position.z = -u.legL.position.z;
     T.m.position.set(T.x, 0, T.z);
@@ -1784,18 +1917,37 @@ function musicTick(){
 const SKY = {day:[new THREE.Color(0x5fb4f0),new THREE.Color(0xd2f0ff)], dusk:[new THREE.Color(0x5a4a9a),new THREE.Color(0xffa070)], night:[new THREE.Color(0x070a24),new THREE.Color(0x1c2350)]};
 const _c1 = new THREE.Color(), _c2 = new THREE.Color();
 let nightAmt = 0;
+// 夜の明かり：どの建物も「窓の灯り＋足もとの光だまり」で同じように光る。色と大きさ、ランタンの形で個性を出す。
+// 点光源（8個）は種類ではなく島全体にばらけるように配る（隅の家だけ暗い、ということがないように）
+const LSTYLE = {
+  warehouse:{c:0xffd070, r:1.25}, house:{c:0xffc860, r:1.05}, camp:{c:0xffa040, r:1.0}, quarry:{c:0xffc060, r:0.9}, forester:{c:0xd8ff90, r:0.8},
+  sawmill:{c:0xffb860, r:0.9}, workshop:{c:0xffe0a0, r:1.0}, smelter:{c:0xff6a30, r:1.25}, factory:{c:0xe0f0ff, r:1.15}, recycle:{c:0xa8ffa0, r:1.0},
+  bakery:{c:0xff9a50, r:1.15}, park:{c:0xffe8b0, r:1.6}, bath:{c:0xff7a5a, r:1.15}, fun:{c:0xffb0e8, r:1.7},
+};
 function assignLights(){
-  const cand = allB().filter(i=>BUILD[S.cells[i].b.type]?.light || ['camp','quarry'].includes(S.cells[i].b.type));
-  const m4 = new THREE.Matrix4(); let ng = 0;
-  for (const i of cand){ if (ng >= 160) break; const p = wpos(i), o = CM[i]?.userData.light || [0,0.5,0.4]; m4.makeTranslation(p.x + o[0]*0.6, 0.012, p.z + clamp(o[2], -0.45, 0.45)); glowMesh.setMatrixAt(ng++, m4); }
-  glowMesh.count = ng; glowMesh.instanceMatrix.needsUpdate = true;
-  cand.sort((a,b)=>(S.cells[b].b.type==='smelter') - (S.cells[a].b.type==='smelter') || (S.cells[a].b.type==='house') - (S.cells[b].b.type==='house'));
+  const cand = allB();
+  const m4 = new THREE.Matrix4(), col = new THREE.Color(); let ng = 0;
+  for (const i of cand){
+    if (ng >= 160) break;
+    const t = S.cells[i].b.type, st = LSTYLE[t] || {c:0xffc070, r:1}, p = bCenter(i), k = bSize(i), o = CM[i]?.userData.light || [0,0.5,0.4];
+    m4.makeScale(st.r, 1, st.r).setPosition(p.x + o[0]*0.6, 0.012, p.z + clamp(o[2], -0.45*k, 0.45*k)); glowMesh.setMatrixAt(ng, m4); glowMesh.setColorAt(ng, col.set(st.c)); ng++;
+  }
+  glowMesh.count = ng; glowMesh.instanceMatrix.needsUpdate = true; if (glowMesh.instanceColor) glowMesh.instanceColor.needsUpdate = true;
+  // 点光源：まず火のある製鉄所（なければ市場）、あとは今ある光からいちばん遠い建物を順に
+  const pts = cand.map(i => ({i, p:bCenter(i)})), picked = [];
+  const first = pts.find(q => S.cells[q.i].b.type === 'smelter') || pts.find(q => q.i === WH) || pts[0];
+  if (first) picked.push(first);
+  while (picked.length < LIGHT_N && picked.length < pts.length){
+    let best = null, bd = -1;
+    for (const q of pts){ if (picked.includes(q)) continue; const d = Math.min(...picked.map(r => Math.hypot(r.p.x - q.p.x, r.p.z - q.p.z))); if (d > bd){ bd = d; best = q; } }
+    picked.push(best);
+  }
   lightPool.forEach((Lp,k)=>{
-    const i = cand[k]; Lp.cell = i ?? -1;
-    if (i === undefined){ Lp.l.position.set(0,-10,0); return; }
-    const p = wpos(i), o = CM[i]?.userData.light || [0,0.5,0.5];
-    Lp.l.position.set(p.x + o[0], o[1], p.z + o[2]); Lp.fire = !!CM[i]?.userData.fire;
-    Lp.l.color.set(Lp.fire ? 0xff7a30 : 0xffc070);
+    const q = picked[k]; Lp.cell = q ? q.i : -1;
+    if (!q){ Lp.l.position.set(0,-10,0); return; }
+    const o = CM[q.i]?.userData.light || [0,0.5,0.5], t = S.cells[q.i].b.type;
+    Lp.l.position.set(q.p.x + o[0], o[1], q.p.z + o[2]); Lp.fire = !!CM[q.i]?.userData.fire;
+    Lp.l.color.set(Lp.fire ? 0xff7a30 : (LSTYLE[t]?.c ?? 0xffc070)); Lp.l.distance = 2.6 * (bSize(q.i) > 1 ? 1.5 : 1);
   });
 }
 function updateDayNight(t){
@@ -1815,9 +1967,15 @@ function updateDayNight(t){
   _c2.copy(SKY.day[1]).lerp(SKY.night[1], nightAmt).lerp(SKY.dusk[1], Math.max(0,duskAmt)*0.85);
   postMat.uniforms.skyTop.value.copy(_c1); postMat.uniforms.skyBot.value.copy(_c2);
   postMat.uniforms.night.value = nightAmt; postMat.uniforms.time.value = t; postMat.uniforms.yaw.value = camS.yaw;
-  const mt = postMat.uniforms.meteor.value;
-  if (mt.w < 1) mt.w += 1/60 * 1.4; else if (nightAmt > 0.8 && Math.random() < (S.meteorNight === S.day ? 0.04 : 0.0015)) mt.set(rnd(0.25,0.85), rnd(0.75,0.95), Math.PI + rnd(0.35,0.7), 0);
+  // 流れ星：ふだんはまれに1つ。「流れ星の夜」は空いっぱいに、長く明るく何本も流れる
+  const shower = S.meteorNight === S.day && nightAmt > 0.4;
+  postMat.uniforms.mLen.value = shower ? 52 : 28;
+  for (const mt of postMat.uniforms.meteor.value){
+    if (mt.w < 1){ mt.w += 1/60 * (shower ? 1.1 : 1.4); continue; }
+    if (nightAmt > 0.4 && Math.random() < (shower ? 0.03 : 0.00025)) mt.set(rnd(0.1,0.95), rnd(0.6,0.98), Math.PI + rnd(0.3,0.8), 0);
+  }
   winMat.emissiveIntensity = nightAmt * 1.6; glowMat.opacity = nightAmt * 0.32;
+  for (const m of lampMats) m.color.copy(m.userData.base).multiplyScalar(0.32 + 0.68*nightAmt);
   fireMat.emissiveIntensity = 0.6 + nightAmt*1.2 + Math.sin(t*9)*0.15;
   for (const Lp of lightPool) Lp.l.intensity = Lp.cell < 0 ? 0 : nightAmt * (Lp.fire ? 2.2 + Math.sin(t*11)*0.4 : 1.4);
 }
@@ -1890,11 +2048,11 @@ function pick(){
   }
   if (raycaster.ray.intersectPlane(groundPlane, _gp)){
     const x = Math.floor(_gp.x + W/2), z = Math.floor(_gp.z + W/2);
-    if (x >= 0 && x < W && z >= 0 && z < W && S.cells[z*W + x].t !== 'void') return z*W + x;
+    if (x >= 0 && x < W && z >= 0 && z < W && S.cells[z*W + x].t !== 'void') return mode ? z*W + x : ownerOf(z*W + x);
   }
   return -1;
 }
-function modeWhy(i){ return mode.kind === 'build' ? canPlace(mode.type, i) : (i === mode.from ? L('同じ場所','Same spot') : S.gold < P.moveCost ? L('お金が足りない','Not enough gold') : canPlace(null, i)); }
+function modeWhy(i){ return mode.kind === 'build' ? canPlace(mode.type, i) : moveWhy(mode.from, i); }
 function doMode(i){
   const why = modeWhy(i); if (why){ toast(why, 'bad'); sfx('ui'); return; }
   if (mode.kind === 'build'){ const t = mode.type; place(t, i); if (!keys.Shift) cancelMode(); select(i); }
@@ -1968,9 +2126,9 @@ function renderPanel(){
     const tb = trade.state === 'docked' ? L('交易気球：停泊中','Trade balloon: docked') : trade.state === 'away' ? L('交易気球：あと'+Math.ceil(trade.t)+'秒','Trade balloon: in '+Math.ceil(trade.t)+'s') : L('交易気球：移動中','Trade balloon: flying');
     h = head(L('市場と桟橋','Market & Dock')) +
       '<div class="row"><span class="grow">'+L('運搬係','Haulers')+' <b style="color:var(--hi)">'+wh.workers+'/'+slots(wh)+'</b><br><small>'+L('できた物を次の加工所へ直接運ぶ。余りは市場へ','Carry goods straight to the next workshop; extras to the market')+'</small></span>' +
-      '<button class="btn hot" data-act="hireWH" '+(wh.workers<slots(wh) && S.gold>=hireCost() && workerCount()<housing() ? '' : 'disabled')+'>'+L('雇う','Hire')+' '+fmt(hireCost())+'G</button>' +
+      '<button class="btn hot w" data-act="hireWH" '+(wh.workers<slots(wh) && S.gold>=hireCost() && workerCount()<housing() ? '' : 'disabled')+'>'+L('雇う','Hire')+' '+fmt(hireCost())+'G</button>' +
       '<button class="btn" data-act="fireWH" '+(wh.workers?'':'disabled')+'>'+L('減らす','Remove')+'</button>' +
-      (wh.lvl < 5 ? '<button class="btn" data-act="lvlWH" '+(S.gold>=lc?'':'disabled')+'>'+L('枠+1','+1 slot')+' '+fmt(lc)+'G</button>' : '') + '</div>' +
+      (wh.lvl < 5 ? '<button class="btn w" data-act="lvlWH" '+(S.gold>=lc?'':'disabled')+'>'+L('枠+1','+1 slot')+' '+fmt(lc)+'G</button>' : '<button class="btn w" disabled>'+L('枠 MAX','Max slots')+'</button>') + '</div>' +
       (workerCount() >= housing() ? '<div class="kv r">'+L('家が満員：住宅を建てると雇える','Houses are full: build a House to hire')+'</div>' : '') +
       '<div class="kv" style="color:var(--sub)">'+tb+'　'+L('同じ物を売り続けると値が下がり、時間で戻る','Prices drop as you sell and recover over time')+'</div>' +
       ITEM_KEYS.filter(k=>S.seen[k]).map(k=>{
@@ -1999,14 +2157,14 @@ function renderPanel(){
       row(L('建物のアイコン','Building icons'), segBtn('set:icons:auto',L('自動','Auto'),SET.icons==='auto') + segBtn('set:icons:on',L('いつも','Always'),SET.icons==='on') + segBtn('set:icons:warn',L('注意だけ','Alerts'),SET.icons==='warn') + segBtn('set:icons:off',L('なし','Off'),SET.icons==='off')) +
       '<div class="kv" style="color:var(--sub)">'+L('自動：チュートリアル中だけ表示。「注意だけ」は満杯や人手なしのときだけ出る','Auto: shown only during the tutorial. Alerts: only when full or unstaffed')+'</div>' +
       row(L('注意の矢印','Alert arrows'), segBtn('set:alerts:1','ON',SET.alerts) + segBtn('set:alerts:0','OFF',!SET.alerts)) +
-      '<div class="kv" style="color:var(--sub)">'+L('壊れた・人がいない・満杯の建物の上に赤い矢印が出る','Red arrows over broken, unstaffed or full buildings')+'</div>' +
+      '<div class="kv" style="color:var(--sub)">'+L('壊れた・人がいない・しばらく満杯のままの建物の上に赤い矢印が出る','Red arrows over broken or unstaffed buildings, and ones that stay full for a long time')+'</div>' +
       row(L('音','Sound'), segBtn('set:sound:1','ON',SET.sound) + segBtn('set:sound:0','OFF',!SET.sound)) +
       row(L('ドットの粗さ','Pixel size'), segBtn('set:pixel:2',L('細かい','Fine'),SET.pixel==2) + segBtn('set:pixel:3',L('ふつう','Normal'),SET.pixel==3) + segBtn('set:pixel:4',L('粗い','Chunky'),SET.pixel==4)) +
       row(L('画面の揺れ','Screen shake'), segBtn('set:shake:1','ON',SET.shake) + segBtn('set:shake:0','OFF',!SET.shake)) +
       row(L('影（重いときはOFF）','Shadows (off = faster)'), segBtn('set:shadows:1','ON',SET.shadows) + segBtn('set:shadows:0','OFF',!SET.shadows)) +
       row(L('文字の大きさ','UI size'), segBtn('set:ui:0.9',L('小','S'),SET.ui==0.9) + segBtn('set:ui:1',L('中','M'),SET.ui==1) + segBtn('set:ui:1.15',L('大','L'),SET.ui==1.15)) +
       '<div class="kv" style="color:var(--sub);margin-top:6px">'+(TOUCH ? L('操作：1本指で移動・2本指で拡大と回転・⟲⟳で回転','Controls: 1 finger pans, 2 fingers zoom & rotate, ⟲⟳ rotate') : L('操作：左ドラッグで回転・右ドラッグで移動・ホイールで拡大','Controls: left-drag rotate, right-drag pan, wheel zoom'))+'</div>' +
-      '<div class="btns"><button class="btn" data-act="confirmReset">'+L('最初からやり直す','Start over')+'</button></div>';
+      '<div class="btns"><button class="btn" data-act="restoreMenu">'+L('前のセーブに戻す','Restore a save')+'</button><button class="btn" data-act="confirmReset">'+L('この島を最初からやり直す','Start this island over')+'</button></div>';
   }
   setHTML(panelEl, h, 'p');
 }
@@ -2017,26 +2175,33 @@ function renderBPanel(){
   let status = '';
   if (b.build > 0) status = '<span style="color:var(--hi)">'+L('工事中… あと','Under construction… ')+Math.ceil(b.build)+L('秒','s')+'</span>';
   else if (b.broken) status = '<span class="r">'+L('故障中','Broken')+'</span>';
-  else if (!workTime() && (d.in||d.job)) status = L('夜は休み','Resting at night');
+  else if (!workTime() && staffed(d)) status = L('夜は休み','Resting at night');
+  else if (d.gen) status = b._working ? '<span class="g">'+L('稼働中','Working')+'</span>' : !b.workers ? '<span class="r">'+L('住民がいない','No workers')+'</span>' : stTotal(b) >= stCap(b) ? '<span class="r">'+L('満杯','Full')+'</span>' : L('待機','Idle');
   else if (d.in) status = b._working ? '<span class="g">'+L('稼働中','Working')+'</span>' : !b.workers ? '<span class="r">'+L('住民がいない','No workers')+'</span>' : b.inb < 1 ? '<span class="r">'+L('材料待ち','Waiting for materials')+'</span>' : stTotal(b) >= bufCap(b) ? '<span class="r">'+L('完成品が満杯','Output full')+'</span>' : L('待機','Idle');
   else if (d.job) status = !b.workers ? '<span class="r">'+L('住民がいない','No workers')+'</span>' : stTotal(b) >= stCap(b) ? '<span class="r">'+L('貯蔵が満杯','Storage full')+'</span>' : '<span class="g">'+L('作業中','Working')+'</span>';
   if (status) Lst.push(status);
   if (d.in) Lst.push(N(ITEMS[d.in].n)+' '+b.inb+'/'+bufCap(b)+' → '+N(ITEMS[d.out].n)+' '+Math.floor(stTotal(b))+'/'+bufCap(b));
   if (d.job){ const it = Object.keys(b.st||{}).filter(k=>b.st[k]>=1).map(k=>N(ITEMS[k].n)+' '+Math.floor(b.st[k])).join('・'); Lst.push(L('貯蔵','Stored')+' '+Math.floor(stTotal(b))+'/'+stCap(b)+(it?'（'+it+'）':'')); }
   if (d.job === 'quarry') Lst.push(S.flags.mine ? L('地下の鉄鉱石：残り ','Underground ore left: ')+fmt(S.res.ore)+' / '+fmt(S.resTotal) : L('近くの岩を割っている','Breaking nearby rocks'));
-  if (d.job || d.in) Lst.push(L('住民 ','Workers ')+b.workers+'/'+slots(b));
+  if (d.gen) Lst.push(N(ITEMS[d.gen].n)+' '+Math.floor(stTotal(b))+'/'+stCap(b));
+  if (staffed(d)) Lst.push(L('住民 ','Workers ')+b.workers+'/'+slots(b));
   if (d.housing) Lst.push(L('住める人数 +','Homes +')+(3+(b.lvl-1)*2)+'（'+L('島全体 ','island ')+workerCount()+'/'+housing()+'）');
   if (d.mood) Lst.push(L('幸福 +','Happiness +')+(d.mood+(b.lvl-1)*Math.ceil(d.mood/2)) + (d.upkeep ? '／'+L('維持費 ','upkeep ')+(d.upkeep*b.lvl)+'G' : ''));
   if (d.fun) Lst.push(L('観光客が毎朝お金を落とす（空港の飛行船で来る）','Tourists spend money each morning (they come by airship)'));
-  let btns = '';
-  if (b.broken){ const rc = Math.round(d.cost.g*0.4); btns += '<button class="btn hot" data-act="repair" '+(S.gold>=rc?'':'disabled')+'>'+L('修理','Repair')+' '+fmt(rc)+'G</button>'; }
-  if (stTotal(b) >= 1 || d.in) btns += '<button class="btn hot" data-act="collect">'+L(d.in?'回収・補充':'回収', d.in?'Collect & supply':'Collect')+'</button>';
-  if (d.job || d.in){
-    btns += '<button class="btn hot" data-act="hire" '+(b.workers<slots(b) && S.gold>=hireCost() && workerCount()<housing() ? '' : 'disabled')+'>'+L('雇う','Hire')+' '+fmt(hireCost())+'G</button>';
-    btns += '<button class="btn" data-act="fire" '+(b.workers?'':'disabled')+'>'+L('減らす','Remove')+'</button>';
-  }
-  if (b.lvl < 5){ const lc = lvlCost(b); btns += '<button class="btn" data-act="lvl" '+(S.gold>=lc?'':'disabled')+'>Lv'+(b.lvl+1)+' '+fmt(lc)+'G</button>'; }
-  btns += '<button class="btn" data-act="move" '+(S.gold>=P.moveCost?'':'disabled')+'>'+L('移動','Move')+' '+P.moveCost+'G</button><button class="btn" data-act="demolish">'+L('撤去','Demolish')+'</button>';
+  // ボタンは決まった枠に並べる（押せないときも消さずに灰色にして、位置がずれないように）
+  const rc = Math.round(d.cost.g*0.4), lc = b.lvl < 5 ? lvlCost(b) : 0;
+  const B = (act, label, ok, hot) => '<button class="btn'+(hot?' hot':'')+'" data-act="'+act+'" '+(ok?'':'disabled')+'>'+label+'</button>';
+  const repairB = B('repair', L('修理','Repair')+' '+fmt(rc)+'G', S.gold >= rc, true);
+  const lvlB = b.lvl < 5 ? B('lvl', 'Lv'+(b.lvl+1)+' '+fmt(lc)+'G', S.gold >= lc) : B('lvl', 'Lv MAX', false);
+  const moveB = B('move', L('移動','Move')+' '+P.moveCost+'G', S.gold >= P.moveCost), demB = B('demolish', L('撤去','Demolish'), true);
+  let slotsH;
+  if (staffed(d)){
+    const hc = workers.length < housing() && S.idle > 0 ? 0 : hireCost();
+    slotsH = [b.broken ? repairB : B('collect', L(d.in?'回収・補充':'回収', d.in?'Collect & supply':'Collect'), stTotal(b) >= 1 || (d.in && S.items[d.in] >= 1 && b.inb < bufCap(b)), true),
+      B('hire', L('雇う','Hire')+' '+(hc ? fmt(hc)+'G' : L('無料','free')), b.workers < slots(b) && S.gold >= hc && workerCount() < housing(), true),
+      B('fire', L('減らす','Remove'), b.workers > 0), lvlB, moveB, demB];
+  } else slotsH = [b.broken ? repairB : lvlB, moveB, demB];
+  const btns = slotsH.join('');
   let look = '';
   if (b.type === 'house'){
     const lk = houseLook(b, c.r);
@@ -2045,8 +2210,8 @@ function renderBPanel(){
       '<div class="row"><span class="grow">'+L('壁の色','Walls')+' <span class="swatch" style="background:#'+HOUSE_WALLS[lk.w].toString(16).padStart(6,'0')+'"></span></span>'+lb('w')+'</div>' +
       '<div class="row"><span class="grow">'+L('屋根の色','Roof color')+' <span class="swatch" style="background:#'+HOUSE_ROOFS[lk.r].toString(16).padStart(6,'0')+'"></span></span>'+lb('r')+'</div>';
   }
-  const extra = (workerCount() >= housing() && (d.job||d.in)) ? '<div class="kv r">'+L('家が満員：住宅を建てると雇える','Houses full: build a House to hire')+'</div>' : '';
-  setHTML(bpanelEl, '<div class="ph"><span>'+N(d.n)+' Lv'+b.lvl+'</span><button class="btn x" data-act="unselect">×</button></div><div class="kv">'+N(d.d)+'<br>'+Lst.join('<br>')+'</div>'+extra+look+'<div class="btns">'+btns+'</div>', 'b');
+  const extra = (workerCount() >= housing() && staffed(d)) ? '<div class="kv r">'+L('家が満員：住宅を建てると雇える','Houses full: build a House to hire')+'</div>' : '';
+  setHTML(bpanelEl, '<div class="ph"><span>'+N(d.n)+' Lv'+b.lvl+'</span><button class="btn x" data-act="unselect">×</button></div><div class="kv">'+N(d.d)+'<br>'+Lst.join('<br>')+'</div>'+look+'<div class="bgrid">'+btns+'</div>'+extra, 'b');
 }
 // ボタン操作：指を離したとき、ほとんど動いていなければ押したことにする（パネルのスクロールと区別）
 let press = null;
@@ -2092,7 +2257,10 @@ function doAct(actStr, el){
     case 'airup': if (S.airport && S.airLvl < AIR_COST.length && S.gold >= AIR_COST[S.airLvl]){ S.gold -= AIR_COST[S.airLvl]; S.airLvl++; buildAirship(true); sfx('fanfare'); burst(airship.pad.x, 1.2, airship.pad.z, 'coin', 12);
       eventQueue.push({result:true, img:'airship_up', title:L('飛行船、改装完了！','The airship is refitted!'), text:L('Lv'+S.airLvl+'の飛行船になった。明日の朝から、もっと多くの観光客がやってくる。','Now a Lv'+S.airLvl+' airship. More tourists will come from tomorrow morning.')}); } break;
     case 'ending': showEnding(); break;
-    case 'confirmReset': el.dataset.act = 'reset'; el.textContent = L('本当にやり直す？（もう一度押す）','Really start over? (press again)'); return;
+    case 'confirmReset': confirmResetModal(); return;
+    case 'restoreMenu': showRestore(); return;
+    case 'restore': restoreBackup(+arg); return;
+    case 'backTitle': showTitle(); return;
     case 'reset': resetGame(); break;
     case 'confirmYes': if (mode && pending >= 0){ doMode(pending); } break;
     case 'confirmNo': cancelMode(); break;
@@ -2107,7 +2275,9 @@ $('#nsBtn').onclick = () => { S.nightShift = !S.nightShift; sfx('ui'); toast(S.n
 const SPEEDS = DEBUG ? [1,2,4,20] : [1,2,4];
 $('#spdBtn').onclick = () => { S.speed = SPEEDS[(SPEEDS.indexOf(S.speed)+1) % SPEEDS.length]; renderTop(); };
 const chipsEl = $('#chips');
-for (const k of ITEM_KEYS){ const el = document.createElement('div'); el.className = 'chip item'; el.id = 'chip-'+k; el.dataset.act = 'sellchip:'+k; el.innerHTML = '<span></span> <b></b> <small></small>'; chipsEl.appendChild(el); }
+const chipEls = {};
+for (const k of ITEM_KEYS){ const el = document.createElement('div'); el.className = 'chip item'; el.id = 'chip-'+k; el.dataset.act = 'sellchip:'+k; el.innerHTML = '<span></span> <b></b> <small></small>'; chipEls[k] = el; }
+function orderChips(){ S.seenOrder = (S.seenOrder || []).filter(k => ITEM_KEYS.includes(k)); for (const k of ITEM_KEYS) if (S.seen[k] && !S.seenOrder.includes(k)) S.seenOrder.push(k); for (const k of [...S.seenOrder, ...ITEM_KEYS.filter(k=>!S.seenOrder.includes(k))]) chipsEl.appendChild(chipEls[k]); }
 function applySettings(){
   document.documentElement.lang = SET.lang;
   document.documentElement.style.setProperty('--ui', SET.ui);
@@ -2123,6 +2293,12 @@ function applySettings(){
 }
 function renderTop(){
   $('#gold').textContent = fmt(S.gold);
+  // 上のバーが何段になっても、その下に注文バー・回転ボタンを置く
+  const tb = $('#top').offsetHeight + 14;
+  if (tb !== renderTop.tb){ renderTop.tb = tb; $('#missions').style.top = tb + 'px'; if (innerWidth <= 700) $('#rot').style.top = (tb + 4) + 'px'; else $('#rot').style.top = ''; }
+  // 品物のチップは「はじめて手に入れた順」に右へ足していく（途中に割りこんで位置がずれないように）
+  S.seenOrder ??= [];
+  for (const k of ITEM_KEYS) if (S.seen[k] && !S.seenOrder.includes(k)){ S.seenOrder.push(k); chipsEl.appendChild(document.getElementById('chip-'+k)); }
   for (const k of ITEM_KEYS){
     const el = document.getElementById('chip-'+k); el.hidden = !S.seen[k];
     if (S.seen[k]){ el.children[1].textContent = fmt(S.items[k]); const pt = '@'+fmt(price(k)); if (el.children[2].dataset.v !== pt){ el.children[2].dataset.v = pt; el.children[2].innerHTML = gfix(pt+'G'); } }
@@ -2157,7 +2333,7 @@ function toast(msg, cls=''){
   setTimeout(()=>el.remove(), 4500);
 }
 // 建物の看板アイコン（UIの下に表示。チュートリアル中だけ／設定で変更）
-const ICONS = {warehouse:'💰', camp:'🌲', quarry:'⛏️', sawmill:'🔨', workshop:'🛋️', bakery:'🍞', forester:'🌱', smelter:'🔥', factory:'⚙️', house:'🏠', park:'🌷', bath:'♨️', fun:'🎡'};
+const ICONS = {warehouse:'💰', camp:'🌲', quarry:'⛏️', sawmill:'🔨', workshop:'🛋️', bakery:'🍞', forester:'🌱', smelter:'🔥', factory:'⚙️', house:'🏠', park:'🌷', bath:'♨️', fun:'🎡', recycle:'♻️'};
 const badgeEls = {};
 function updateBadges(){
   const box = $('#badges'), mode2 = SET.icons === 'auto' ? (S.tut >= 0 ? 'on' : 'off') : SET.icons;
@@ -2165,14 +2341,14 @@ function updateBadges(){
     const c = S.cells[i]; let el = badgeEls[i];
     if (c.t !== 'b' || mode2 === 'off'){ if (el) el.style.display = 'none'; continue; }
     const b = c.b, d = BUILD[b.type];
-    const warn = b.broken || ((d.job || d.in) && !b.workers && b.build <= 0) || (b.type !== 'warehouse' && (d.job || d.in) && stTotal(b) >= stCap(b));
+    const warn = needsCare(b);
     const show = b.build > 0 || (mode2 === 'on') || (mode2 === 'warn' && warn);
     if (!show){ if (el) el.style.display = 'none'; continue; }
     if (!el){ el = badgeEls[i] = document.createElement('div'); el.className = 'badge'; box.appendChild(el); }
     const icon = b.build > 0 ? '🏗️' : ICONS[b.type];
     if (el.dataset.t !== icon){ el.dataset.t = icon; el.textContent = icon; el.classList.toggle('small', b.type === 'house'); }
     el.classList.toggle('warn', !!warn && b.build <= 0); el.classList.toggle('build', b.build > 0);
-    const p = wpos(i), [sx, sy] = toScreen(p.x, b.type === 'house' ? 0.9 : 1.15, p.z);
+    const p = bCenter(i), [sx, sy] = toScreen(p.x, b.type === 'house' ? 0.9 : bSize(i) > 1 ? 1.7 : 1.15, p.z);
     el.style.display = 'flex'; el.style.left = sx + 'px'; el.style.top = sy + 'px';
   }
 }
@@ -2184,20 +2360,20 @@ for (let k=0;k<4;k++){ const m = new THREE.Mesh(G.box, new THREE.MeshBasicMateri
 scene.add(hover);
 // 早急に対処すべき建物（壊れた・人がいない・満杯）に赤い矢印
 const alertMat = new THREE.MeshBasicMaterial({color:0xff5a5a}), alertMarks = [];
+const FULL_ALERT = 45;   // 満杯がこの秒数つづいたら注意
+function needsCare(b){
+  const d = BUILD[b.type];
+  if (b.type === 'warehouse' || b.build > 0) return false;
+  return !!(b.broken || (staffed(d) && !b.workers) || (staffed(d) && (b._fullT || 0) >= FULL_ALERT));
+}
 function urgentCells(){
   if (!SET.alerts || S.tut >= 0) return [];
-  const r = [];
-  for (const i of allB()){
-    const b = S.cells[i].b, d = BUILD[b.type];
-    if (b.type === 'warehouse' || b.build > 0) continue;
-    if (b.broken || ((d.job || d.in) && !b.workers) || ((d.job || d.in) && stTotal(b) >= stCap(b))) r.push(i);
-  }
-  return r.slice(0, 10);
+  return allB().filter(i => needsCare(S.cells[i].b)).slice(0, 10);
 }
 function updateAlerts(){
   const u = urgentCells();
   while (alertMarks.length < u.length){ const m = new THREE.Mesh(G.cone4, alertMat); m.scale.set(0.17,0.3,0.17); m.rotation.x = Math.PI; scene.add(m); alertMarks.push(m); }
-  alertMarks.forEach((m, k) => { const i = u[k]; m.visible = i !== undefined; if (!m.visible) return; const p = wpos(i); m.position.set(p.x, 1.2 + Math.abs(Math.sin(elapsed*5 + k))*0.18, p.z); m.rotation.y = elapsed*2; });
+  alertMarks.forEach((m, k) => { const i = u[k]; m.visible = i !== undefined; if (!m.visible) return; const p = bCenter(i); m.position.set(p.x, (bSize(i) > 1 ? 1.8 : 1.2) + Math.abs(Math.sin(elapsed*5 + k))*0.18, p.z); m.rotation.y = elapsed*2; });
 }
 function markerTarget(){
   const T = S.tut >= 0 ? TUT[S.tut] : null; if (!T || !T.mark) return -1;
@@ -2227,33 +2403,92 @@ function expandIsland(dir){
 
 /* ---- 空港と飛行船（ゴール演出） */
 let airship = null;
+// 飛行船：改装するほど大きく豪華に（Lv0 素朴 → Lv1 金の飾りとエンジン → Lv2 縞の気嚢と2階建てゴンドラ・ちょうちん → Lv3 王室の青と金）
 function buildAirship(docked){
   if (airship){ scene.remove(airship.g); airship = null; }
   const lv = S.airLvl || 0, e = dockEdge();
-  const a = new THREE.Group();
-  const env = [0xe8d8b0, 0xf0e4c8, 0xf4ecd8, 0xfff4e0][lv];
-  const bal = new THREE.Mesh(G.sph, MT(env)); bal.scale.set(1.5,0.55,0.55); bal.castShadow = true; a.add(bal);
-  for (const z of [-0.2, 0.2]) a.add(part(G.box, lv >= 2 ? 0xe8b840 : 0xc84a3a, 2.2,0.04,0.02, 0,0.1,z*2.6));
-  a.add(part(G.box, 0xc84a3a, 0.4,0.5,0.04, 1.4,0,0)); a.add(part(G.box, 0xc84a3a, 0.4,0.04,0.5, 1.4,0,0));
-  a.add(part(G.box, 0x8a5a2e, 0.7 + lv*0.25,0.22,0.3, 0,-0.7,0)); a.add(part(G.box, 0, 0.5 + lv*0.25,0.08,0.31, 0,-0.66,0, winMat));
-  const props = [part(G.box, 0x444444, 0.04,0.5,0.06, 0.42 + lv*0.12,-0.7,0)];
-  if (lv >= 1) for (const z of [-0.45, 0.45]){ { const en = part(G.cyl, 0x6a6a72, 0.08,0.3,0.08, -0.3,-0.45,z); en.rotation.z = Math.PI/2; a.add(en); } const pr = part(G.box, 0x444444, 0.03,0.32,0.05, -0.12,-0.45,z); a.add(pr); props.push(pr); }
-  if (lv >= 2) for (let k=0;k<5;k++) a.add(part(G.box, [0xff5a5a,0xffd35a,0x7ee0ff,0x9aff7a,0xff9af0][k], 0.08,0.12,0.01, -0.8 + k*0.4, -0.25, 0.56));
-  if (lv >= 3){ a.add(part(G.box, 0x8a5a2e, 0.8,0.18,0.28, -0.5,-1.0,0)); a.add(part(G.box, 0, 0.6,0.07,0.29, -0.5,-0.97,0, winMat)); a.add(part(G.cyl, 0xdddddd, 0.015,0.5,0.015, -1.2,0.7,0)); a.add(part(G.box, 0xe04040, 0.25,0.14,0.01, -1.08,0.85,0)); }
+  const a = new THREE.Group(), props = [];
+  const ENV = [0xe8d8b0, 0xf4ecd8, 0xf6f0e4, 0x3a4ab0][lv], TRIM = [0xc84a3a, 0xe8b840, 0xd84a4a, 0xf0c848][lv], GOLD = 0xe8b840;
+  const LX = 1.5 + lv*0.12, R = 0.55 + lv*0.04;
+  const bal = new THREE.Mesh(G.sph, MT(ENV)); bal.scale.set(LX, R, R); bal.castShadow = true; a.add(bal);
+  const rAt = x => R * Math.sqrt(Math.max(0, 1 - (x/LX)**2)) + 0.012;
+  const ring = (x, hex, w=0.06) => { const r = rAt(x) + 0.01, m = part(G.torus, hex, r, r, r * (w > 0.08 ? 1.6 : 1), x, 0, 0); m.rotation.y = Math.PI/2; a.add(m); };
+  if (lv === 0){ for (const z of [-1, 1]) a.add(part(G.box, TRIM, 2.2,0.04,0.02, 0,0.1, z*0.52)); }
+  else { const xs = lv >= 2 ? [-1.1,-0.7,-0.3,0.1,0.5,0.9] : [-0.9, 0, 0.9]; xs.forEach((x,k)=>ring(x, lv === 2 ? (k%2 ? 0xd84a4a : 0x4a6ab0) : TRIM, lv >= 2 ? 0.12 : 0.05)); }
+  if (lv >= 1){ const nose = part(G.sph, GOLD, 0.12,0.12,0.12, LX-0.02,0,0); a.add(nose); }
+  // 尾翼
+  const fin = lv >= 3 ? 0xf0c848 : 0xc84a3a, fs = 1 + lv*0.15;
+  a.add(part(G.box, fin, 0.45*fs,0.55*fs,0.04, -LX+0.1,0,0)); a.add(part(G.box, fin, 0.45*fs,0.04,0.55*fs, -LX+0.1,0,0));
+  if (lv >= 3) for (const z of [-1,1]) a.add(part(G.box, GOLD, 0.5,0.03,0.02, -LX+0.1, 0, z*0.28*fs));
+  // ゴンドラ
+  const gw = 0.7 + lv*0.25, gy = -R - 0.18;
+  a.add(part(G.box, lv >= 3 ? 0xf4ecd8 : 0x8a5a2e, gw,0.22,0.3, 0,gy,0)); a.add(part(G.box, 0, gw-0.2,0.08,0.31, 0,gy+0.04,0, winMat));
+  for (const x of [-gw/2+0.05, gw/2-0.05]) a.add(part(G.box, 0x5a4a3a, 0.02,0.2,0.02, x,gy+0.2,0));
+  if (lv >= 2){ // 2階のゴンドラと手すり
+    a.add(part(G.box, lv >= 3 ? 0xf4ecd8 : 0x9a6a3a, gw*0.8,0.18,0.28, 0,gy-0.21,0)); a.add(part(G.box, 0, gw*0.8-0.16,0.07,0.29, 0,gy-0.2,0, winMat));
+    a.add(part(G.box, GOLD, gw+0.1,0.02,0.36, 0,gy-0.12,0));
+    for (let k=0;k<7;k++) a.add(part(G.box, GOLD, 0.015,0.08,0.015, -gw/2 + k*gw/6, gy-0.08, 0.18));
+    a.add(part(G.box, GOLD, gw,0.015,0.015, 0,gy-0.04,0.18));
+  }
+  // エンジンとプロペラ
+  props.push(part(G.box, 0x444444, 0.04,0.5,0.06, gw/2+0.08,gy,0));
+  if (lv >= 1) for (const z of (lv >= 3 ? [-0.62,-0.42,0.42,0.62] : [-0.45, 0.45])){ const en = part(G.cyl, lv >= 3 ? GOLD : 0x6a6a72, 0.08,0.3,0.08, -0.3,gy+0.25,z); en.rotation.z = Math.PI/2; a.add(en); const pr = part(G.box, 0x444444, 0.03,0.32,0.05, -0.12,gy+0.25,z); props.push(pr); }
+  // 旗・ちょうちん・飾り
+  if (lv >= 1){ // 気嚢の下に張った旗の列
+    const n = 6 + lv*2, x0 = LX*0.7, x1 = -LX*0.7, yy = x => -rAt(x) - 0.04;
+    for (let k=0;k<n;k++){ const x = x0 + (x1-x0)*k/(n-1); const fl = part(G.cone4, [0xff5a5a,0xffd35a,0x7ee0ff,0x9aff7a,0xff9af0][k%5], 0.05,0.1,0.012, x, yy(x) - 0.06, 0); fl.rotation.x = Math.PI; a.add(fl); } }
+  if (lv >= 2) for (let k=0;k<9;k++){ const x = -gw/2 - 0.3 + k*(gw+0.6)/8; a.add(part(G.sph, 0, 0.035,0.045,0.035, x, gy+0.13 + Math.sin(k/8*Math.PI)*-0.05, -0.2, lampMat([0xffd35a,0xff7a5a,0x7ee0ff][k%3]))); }
+  if (lv >= 2){ a.add(part(G.cyl, 0xdddddd, 0.015,0.55,0.015, -LX*0.6,R+0.2,0)); a.add(part(G.box, TRIM, 0.28,0.15,0.01, -LX*0.6+0.15,R+0.38,0)); }
+  if (lv >= 3){ // 王冠の飾りと金の紋章
+    a.add(part(G.cyl, GOLD, 0.16,0.08,0.16, 0.2,R+0.02,0));
+    for (let k=0;k<5;k++){ const an = k/5*Math.PI*2; a.add(part(G.cone4, GOLD, 0.03,0.12,0.03, 0.2+Math.cos(an)*0.13, R+0.1, Math.sin(an)*0.13)); }
+    a.add(part(G.sph, 0xd84a6a, 0.05,0.05,0.05, 0.2,R+0.1,0));
+    for (const z of [-1,1]){ const em = part(G.torus, GOLD, 0.14,0.14,0.2, 0.4,0,z*(rAt(0.4)+0.005)); a.add(em); a.add(part(G.sph, 0xd84a6a, 0.05,0.05,0.03, 0.4,0,z*(rAt(0.4)+0.01))); }
+    a.add(part(G.cyl, 0xdddddd, 0.015,0.55,0.015, LX*0.5,R+0.2,0)); a.add(part(G.box, 0xffffff, 0.26,0.14,0.01, LX*0.5+0.14,R+0.38,0));
+  }
   props.forEach(pr => a.add(pr));
-  a.scale.setScalar(1 + lv*0.15);
+  a.scale.setScalar(1 + lv*0.08);
   scene.add(a);
-  airship = {g:a, props, pad:new THREE.Vector3(e.x, 0.95 + lv*0.12, e.z + 1.3), t: docked ? 1 : 0, ended: docked};
+  const first = !docked;
+  airship = {g:a, props, pad:new THREE.Vector3(e.x, 0.95 + lv*0.12 + lv*0.08, e.z + 1.3), t: docked ? 1 : 0, ended: docked};
+  if (first) S.airFirst = S.day;
   if (docked) a.position.copy(airship.pad); else { sfx('fanfare'); shake(0.1); toast(L('空港が完成！飛行船がやってくる…','Airport built! An airship is coming…'),'good'); }
+}
+// 飛行船の時刻表：朝7時に観光客を乗せて着き、15時半から乗りこみ、17時半に出発。夜は本土へ戻っている
+// （空港を開いた日だけは、そのまま停泊している）
+function airPhase(){
+  if (!airship || !airship.ended || S.day === S.airFirst) return {st:'docked', k:0};
+  const h = hourOf(S.time);
+  if (h >= 7 && h < 8) return {st:'arrive', k:h-7};
+  if (h >= 8 && h < 17.5) return {st:'docked', k:0, board:h >= 15.5};
+  if (h >= 17.5 && h < 18.5) return {st:'leave', k:h-17.5};
+  return {st:'away', k:0};
+}
+// 着いたら観光客がおりて、お金を落としていく（sim から呼ぶ）
+function tourCheck(){
+  const ph = airPhase();
+  if (!airship || !airship.ended || ph.st !== 'docked' || ph.board || S.day === S.airFirst || S.tourDay === S.day) return;
+  S.tourDay = S.day;
+  const fl = allB('fun').reduce((a,i)=>a + S.cells[i].b.lvl, 0);
+  const n = Math.max(1, Math.round((2 + 3*S.airLvl) * (1 + 0.6*fl) * (0.5 + S.mood/100))), inc = n * (15 + 12*fl);
+  S.gold += inc; S.stats.earned += inc; S.stats.tourists = (S.stats.tourists || 0) + n; S.tourN = n;
+  popAt(airship.pad.x, 1.6, airship.pad.z, '+'+fmt(inc)+'G', 'g'); sfx('coin');
+  toast(L('飛行船が到着：観光客 '+n+'人 +'+fmt(inc)+'G', 'Airship landed: '+n+' tourists +'+fmt(inc)+'G'), 'good');
 }
 function updateAirship(dt, t){
   if (!airship) return;
   const A = airship;
   if (A.t < 1){
     A.t = Math.min(1, A.t + dt/6); const k = 1 - Math.pow(1 - A.t, 3);
-    A.g.position.set(A.pad.x - 22*(1-k), A.pad.y + 6*(1-k), A.pad.z + 8*(1-k));
+    A.g.position.set(A.pad.x - 22*(1-k), A.pad.y + 6*(1-k), A.pad.z + 8*(1-k)); A.g.visible = true;
     if (A.t >= 1 && !A.ended){ A.ended = true; burst(A.pad.x, 1, A.pad.z, 'coin', 16); showEnding(); }
-  } else A.g.position.y = A.pad.y + Math.sin(t*1.2)*0.06;
+  } else {
+    const ph = airPhase(), far = new THREE.Vector3(A.pad.x - 24, A.pad.y + 7, A.pad.z + 10), far2 = new THREE.Vector3(A.pad.x + 24, A.pad.y + 8, A.pad.z + 12);
+    A.g.visible = ph.st !== 'away';
+    if (ph.st === 'arrive'){ const k = 1 - Math.pow(1 - ph.k, 3); A.g.position.lerpVectors(far, A.pad, k); }
+    else if (ph.st === 'leave'){ const k = Math.pow(ph.k, 2); A.g.position.lerpVectors(A.pad, far2, k); }
+    else A.g.position.set(A.pad.x, A.pad.y + Math.sin(t*1.2)*0.06, A.pad.z);
+  }
   for (const pr of A.props) pr.rotation.x += dt*20;
 }
 function updateTradeBalloon(t){
@@ -2269,6 +2504,7 @@ function updateTradeBalloon(t){
    保存
    ========================================================= */
 const SAVE_KEY = 'di_save_v2', OLD_KEY = 'di_save_v1', ISLAND = 'sky';
+const islName = k => ({sky:['空の島','Sky Island'], dairy:['酪農の島','Dairy Island']}[k] || [k, k]);
 let noSave = false, saveBox = {ver:2, cur:ISLAND, islands:{}};
 function save(){ if (noSave) return; try { saveBox.cur = ISLAND; saveBox.islands[ISLAND] = S; localStorage.setItem(SAVE_KEY, JSON.stringify(saveBox)); } catch(e){} }
 // v1（石材あり）のセーブを今の形に直す
@@ -2293,14 +2529,70 @@ function load(){
   } catch(e){}
   return null;
 }
+// 古いセーブ：1マスだった公園・遊園地を2×2に広げる（周りが埋まっていれば近くの空き地へ移す）
+function fixFootprints(){
+  const free = q => ['grass','tree','sapling'].includes(S.cells[q].t);
+  for (let i=0;i<W*W;i++){
+    const c = S.cells[i]; if (c.t !== 'b') continue; const sz = BUILD[c.b.type]?.size || 1; if (sz < 2) continue;
+    if (cx(i)+sz <= W && cz(i)+sz <= W && footCells(i, sz).every(q => q === i || (S.cells[q].t === 'occ' && S.cells[q].of === i))) continue;
+    const fits = j => cx(j)+sz <= W && cz(j)+sz <= W && footCells(j, sz).every(q => q === i || free(q));
+    let to = -1, bd = 99; for (let j=0;j<W*W;j++) if (fits(j) && cheb(i, j) < bd){ bd = cheb(i, j); to = j; }
+    if (to < 0){ S.gold += c.b.type === 'fun' ? BUILD.fun.cost.g : BUILD[c.b.type].cost.g; S.cells[i] = {t:'grass', r:Math.random()}; continue; }
+    if (to !== i){ S.cells[i] = {t:'grass', r:Math.random()}; }
+    for (const q of footCells(to, sz)) if (q !== to) S.cells[q] = {t:'occ', of:to};
+    S.cells[to] = c;
+  }
+  for (let i=0;i<W*W;i++){ const c = S.cells[i]; if (c.t === 'occ' && (S.cells[c.of]?.t !== 'b' || !footCells(c.of, bSize(c.of)).includes(i))) S.cells[i] = {t:'grass', r:Math.random()}; }
+}
 function initWorld(){
+  fixFootprints();
   for (let i=0;i<W*W;i++) setCellMesh(i);
   for (const w of workers.splice(0)) scene.remove(w.mesh);
   for (const m of [reserved, haulRes]) for (const k in m) delete m[k];
   for (let i=0;i<W*W;i++) if (S.cells[i].t === 'b'){ const b = S.cells[i].b, n = b.workers; b.workers = 0; for (let k=0;k<n;k++) addWorker(i); if (b.broken) CM[i].rotation.z = 0.12; }
   updateTiles(); updatePaths(); assignLights(); if (S.airport) buildAirship(true);
 }
+// バックアップ：毎朝（最新3日ぶん）と、やり直し・島の移動の直前に保存しておき、いつでも戻せる
+const BACKUP_KEY = 'di_backup_v1';
+function backups(){ try { return JSON.parse(localStorage.getItem(BACKUP_KEY)) || []; } catch(e){ return []; } }
+function backup(why){
+  if (noSave || !S) return;
+  try {
+    let list = backups().filter(b => !(why === 'dawn' && b.why === 'dawn' && b.isl === ISLAND && b.day === S.day));
+    list.unshift({t:Date.now(), isl:ISLAND, day:S.day, gold:Math.floor(S.gold), why, data:JSON.stringify(S)});
+    const dawn = list.filter(b => b.why === 'dawn' && b.isl === ISLAND).slice(3);   // 毎朝の分は島ごとに3つまで
+    list = list.filter(b => !dawn.includes(b)).slice(0, 8);
+    localStorage.setItem(BACKUP_KEY, JSON.stringify(list));
+  } catch(e){
+    try { const list = backups().slice(0, 3); localStorage.setItem(BACKUP_KEY, JSON.stringify(list)); } catch(e2){}
+  }
+}
+function restoreBackup(k){
+  const b = backups()[k]; if (!b) return;
+  backup('restore');
+  noSave = true;
+  try { saveBox.islands[b.isl] = JSON.parse(b.data); saveBox.cur = b.isl; localStorage.setItem(SAVE_KEY, JSON.stringify(saveBox)); } catch(e){}
+  location.reload();
+}
+const WHY = {dawn:['朝の自動保存','Morning autosave'], reset:['やり直す前','Before starting over'], travel:['島を移る前','Before traveling'], restore:['復元する前','Before restoring']};
+function showRestore(){
+  const list = backups(), d = new Date();
+  $('#modal .mbox').innerHTML = gfix('<h2>'+L('前のセーブに戻す','Restore a save')+'</h2><p class="kv">'+L('毎朝の自動保存と、やり直し・島の移動の直前の状態が残っています。','Morning autosaves and the state right before starting over or traveling are kept here.')+'</p><div class="opts">' +
+    (list.length ? list.map((b, k) => { d.setTime(b.t); const tm = (d.getMonth()+1)+'/'+d.getDate()+' '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+      return '<button class="opt" data-act="restore:'+k+'"><div class="n">▶ '+N(islName(b.isl))+'　Day '+b.day+'　'+fmt(b.gold)+'G</div><div class="d">'+N(WHY[b.why] || ['',''])+'（'+tm+'）</div></button>'; }).join('') : '<div class="kv">'+L('まだありません','Nothing yet')+'</div>') +
+    '<button class="opt" data-act="backTitle"><div class="n">◀ '+L('もどる','Back')+'</div></button></div>');
+  $('#modal').hidden = false;
+}
+// やり直しの確認：誤タップしないよう、別の画面で、少し待ってから押せるようにする
+function confirmResetModal(){
+  $('#modal .mbox').innerHTML = gfix('<h2>'+L('この島を最初からやり直す？','Start this island over?')+'</h2><p>'+L('今の'+N(islName(ISLAND))+'（Day '+S.day+'・'+fmt(S.gold)+'G）は「前のセーブに戻す」からいつでも戻せます。','Your current '+N(islName(ISLAND))+' (day '+S.day+', '+fmt(S.gold)+'G) can be restored any time from “Restore a save”.')+'</p>' +
+    '<div class="opts"><button class="opt" data-act="backTitle"><div class="n">◀ '+L('やめる（このまま続ける）','No, keep playing')+'</div></button>' +
+    '<div style="height:28px"></div><button class="opt" id="resetYes" data-act="reset" disabled><div class="n">▶ '+L('やり直す','Start over')+'</div></button></div>');
+  $('#modal').hidden = false;
+  setTimeout(() => { const b = $('#resetYes'); if (b) b.disabled = false; }, 1200);
+}
 function resetGame(){
+  backup('reset');
   noSave = true;
   try { delete saveBox.islands[ISLAND]; localStorage.setItem(SAVE_KEY, JSON.stringify(saveBox)); localStorage.removeItem(OLD_KEY); } catch(e){}
   location.reload();
@@ -2411,17 +2703,21 @@ function frame(now){
     if (nightAmt > 0.3 && wdt){ fwAcc += dt; if (fwAcc > 1.1){ fwAcc = 0; firework(); } }
     if (wdt) musicTick();
   } else if (bonfire.visible){ bonfire.visible = false; festLight.intensity = 0; }
-  updateFx(wdt ? dt : 0); updatePops(dt); updateAirship(dt, elapsed); updateCritters(wdt ? dt : 0); updateBadges(); updateAlerts(); updateTourists(wdt ? dt*Math.min(2, S.speed) : 0);
+  updateFx(wdt ? dt : 0); updatePops(dt); updateAirship(dt, elapsed); updateCritters(wdt ? dt : 0); updateBadges(); updateAlerts(); updateTourists(wdt ? dt*Math.min(4, S.speed) : 0);
   // マーカー・ホバー・置き場所プレビュー
   const mt = markerTarget();
   if (mt >= 0){ const p = wpos(mt); marker.visible = true; marker.position.set(p.x, 1.35 + Math.abs(Math.sin(elapsed*5))*0.2, p.z); } else marker.visible = false;
   hoverCell = mode && TOUCH ? pending : (mouseIn && !drag) ? pick() : -1;
-  if (hoverCell >= 0){ const p = wpos(hoverCell); hover.visible = true; hover.position.set(p.x, 0, p.z); } else hover.visible = false;
+  if (hoverCell >= 0){
+    const hs = mode ? (mode.kind === 'build' ? BUILD[mode.type].size || 1 : bSize(mode.from)) : bSize(hoverCell), p = wpos(hoverCell), k = (hs-1)/2;
+    hover.visible = true; hover.position.set(p.x + k, 0, p.z + k); hover.scale.set(hs, 1, hs);
+  } else hover.visible = false;
   if (mode && ghost){
     const tip = $('#tip');
     if (hoverCell >= 0){
       const p = wpos(hoverCell), ok = !modeWhy(hoverCell);
-      ghost.visible = true; ghost.position.set(p.x, 0.02, p.z);
+      const gk = ((mode.kind === 'build' ? BUILD[mode.type].size || 1 : bSize(mode.from)) - 1)/2;
+      ghost.visible = true; ghost.position.set(p.x + gk, 0.02, p.z + gk);
       ghost.traverse(o=>{ if (o.isMesh) o.material = ok ? ghostOk : ghostNg; });
       tip.style.display = 'block'; tip.innerHTML = gfix(placementInfo(hoverCell));
       const [sx, sy] = TOUCH ? toScreen(p.x, 1.4, p.z) : [mx, my];
@@ -2445,12 +2741,14 @@ function showTitle(){
     '<p style="text-align:center">'+L('中身は3D、見た目はドット絵。<br>空に浮かぶ島を、あなたのやり方で育てよう。','A 3D world in pixel art.<br>Grow your floating island your own way.')+'</p>' +
     '<div class="seg" style="justify-content:center">'+segBtn('lang:ja','日本語',SET.lang==='ja')+segBtn('lang:en','English',SET.lang==='en')+'</div>' +
     '<div class="opts"><button class="opt" data-act="closeModal"><div class="n">▶ '+(fresh ? L('はじめる','Start') : L('つづきから（Day '+S.day+'）','Continue (day '+S.day+')'))+'</div><div class="d">'+(TOUCH ? L('1本指で移動・2本指で拡大と回転・タップで伐採や建物を選ぶ','1 finger pans, 2 fingers zoom & rotate, tap to chop or select') : L('左ドラッグ：回転　右ドラッグ：移動　ホイール：拡大　クリック：伐採・建物を選ぶ','Left-drag rotate, right-drag pan, wheel zoom, click to chop or select'))+'</div></button>' +
-    (fresh ? '' : '<button class="opt" data-act="confirmReset"><div class="n">▶ '+L('新しい島ではじめる','Start a new island')+'</div></button>') + '</div>');
+    (fresh ? '' : '<div style="height:14px"></div><button class="opt" data-act="confirmReset"><div class="n">'+L('この島を最初からやり直す','Start this island over')+'</div></button>') +
+    (backups().length ? '<button class="opt" data-act="restoreMenu"><div class="n">'+L('前のセーブに戻す','Restore a save')+'</div><div class="d">'+L('毎朝の自動保存・やり直す前の島','Morning autosaves and islands before a restart')+'</div></button>' : '') + '</div>');
   $('#modal').hidden = false;
 }
 S = load() || newState();
 for (const k of ITEM_KEYS){ S.items[k] ??= 0; S.sat[k] ??= 1; S.stats.made[k] ??= 0; S.stats.soldBy[k] ??= 0; }
 makeClouds();
+orderChips();
 initWorld();
 spawnCritters();
 applySettings();
@@ -2465,4 +2763,4 @@ window.DTT = {get S(){return S;}, P, W, WH, place, hire, levelUp, sell, clickCel
   skipTut:()=>{S.tut=-1;$('#tut').hidden=true;}, reset:resetGame,
   screenOf:(i)=>{const p=wpos(i); return toScreen(p.x,0,p.z);},
   bench:(n=30)=>{const px=new Uint8Array(4);const gl=renderer.getContext();const t0=performance.now();for(let k=0;k<n;k++){renderer.setRenderTarget(rt);renderer.render(scene,cam);renderer.setRenderTarget(null);renderer.render(postScene,postCam);gl.readPixels(0,0,1,1,gl.RGBA,gl.UNSIGNED_BYTE,px);}return (performance.now()-t0)/n;},
-  get trade(){return trade;}, camS, buildDock, buildAirship, updateTiles, moodBreakdown, offDuty, whale, get mode(){return mode;}, setLang:(l)=>{SET.lang=l; applySettings(); renderTop();}};
+  get trade(){return trade;}, tourists, backups, airPhase, get airship(){return airship;}, camS, buildDock, buildAirship, updateTiles, moodBreakdown, offDuty, whale, get mode(){return mode;}, setLang:(l)=>{SET.lang=l; applySettings(); renderTop();}};
