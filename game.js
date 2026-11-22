@@ -1313,7 +1313,7 @@ function sell(it, n, silent){
   let earn = 0;
   for (let k=0;k<n;k++){ earn += price(it); S.sat[it] = Math.max(P.satFloor, S.sat[it]*(1-P.satDrop)); }
   earn = Math.round(earn);
-  S.items[it] -= n; S.gold += earn; S.stats.earned += earn; S.stats.sold += n; S.stats.soldBy[it] += n;
+  S.items[it] -= n; S.gold += earn; S.stats.earned += earn; S.stats.sold += n; S.stats.soldBy[it] += n; S.stats.shipped[it] += n;
   if (!silent){ popAt(wpos(WH).x, 1.2, wpos(WH).z, '+'+fmt(earn)+'G', 'g'); coinBurst(Math.min(8, 1+Math.floor(earn/60))); sfx('coin'); }
   return earn;
 }
@@ -2460,6 +2460,7 @@ function onDawn(){
   }
   if (S.tut < 0) queueEvent();
   backup('dawn');
+  clearTimeout(onDawn.snap); onDawn.snap = setTimeout(takePhoto, 1500);          // 明るくなってから
 }
 
 /* ---- 毎フレームの経済 */
@@ -2533,7 +2534,7 @@ function sim(dt){
   // 大口注文への納品（相場の影響を受けない）
   for (const C of S.contracts.slice()){
     const n = Math.min(Math.floor(S.items[C.it]), C.need - C.got);
-    if (n > 0){ S.items[C.it] -= n; C.got += n; }
+    if (n > 0){ S.items[C.it] -= n; C.got += n; S.stats.shipped[C.it] += n; }
     if (C.got >= C.need){
       S.contracts.splice(S.contracts.indexOf(C),1); S.gold += C.reward; S.stats.earned += C.reward; S.stats.contractsDone++;
       popAt(wpos(WH).x, 1.4, wpos(WH).z, '+'+fmt(C.reward)+'G','g'); coinBurst(10); sfx('fanfare');
@@ -3725,7 +3726,6 @@ function doAct(actStr, el){
   switch (act){
     case 'share': showShare(arg || 'photo'); return;
     case 'score': showScore(arg || ISLAND); return;
-    case 'scoreX': if (arg === 'total' || ISLANDS[arg]) openX(scoreText(arg), scoreURL(arg)); return;
     case 'shareX': case 'shareNative': case 'shareCopyImg': case 'shareSave': case 'shareLink': shareAct(act); return;
     case 'visitExit': location.href = location.pathname + location.search; return;
     case 'panel': openPanel(arg); break;
@@ -4167,7 +4167,7 @@ function showTravel(to){
 }
 function travel(to){
   if (noSave || !canTravel(to)) return;
-  backup('travel');
+  backup('travel'); takePhoto();
   saveBox = latestBox();
   const first = !saveBox.islands[to], T = first ? newState(to) : saveBox.islands[to];
   T.arrived = {first};
@@ -4418,13 +4418,30 @@ function visitState(){
   }
   return s;
 }
+function fitIsland(a){          // 陸の四隅が画面に収まる倍率と中心
+  const Ld = S.land, sy = Math.sin(camS.yaw), cy = Math.cos(camS.yaw), sp = Math.sin(camS.pitch), cp = Math.cos(camS.pitch), o = (W-1)/2;
+  let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+  for (const x of [Ld.x0-0.5-o, Ld.x1+0.5-o]) for (const z of [Ld.z0-0.5-o, Ld.z1+0.5-o]) for (const y of [-2.3, 1.5]){
+    const u = x*cy - z*sy, v = (y + 0.6)*cp - (x*sy + z*cy)*sp;
+    x0 = Math.min(x0,u); x1 = Math.max(x1,u); y0 = Math.min(y0,v); y1 = Math.max(y1,v);
+  }
+  const mx = (x0+x1)/2, d = (y0+y1)/2/sp;
+  return {zoom:Math.max(13, 16/a) / (Math.max(y1-y0, (x1-x0)/a)*1.03), x:mx*cy - d*sy, z:-mx*sy - d*cy};
+}
+// 総合スコア用：島ごとに最後の姿を1枚だけ残す（セーブとは別）
+const PHOTO_KEY = isl => 'di_photo_'+isl;
+function takePhoto(){
+  if (VISIT || noSave || !isOwner()) return;
+  try { localStorage.setItem(PHOTO_KEY(ISLAND), snapIsland(480, 420).toDataURL('image/jpeg', 0.82)); } catch(e){}
+}
+function getPhoto(isl){ try { const u = localStorage.getItem(PHOTO_KEY(isl)); return u?.startsWith('data:image/') ? u : null; } catch(e){ return null; } }
 // いまの角度のまま、島全体が収まる構図で撮る
 function snapIsland(w, h){
   const keep = {...camS}, off = [hover, marker, ringG, plotMark, layMesh, warnMesh, ...alertMarks].map(o => [o, o.visible]);
   for (const [o] of off) o.visible = false;
   if (ghost) ghost.visible = false;
   VIEW.w = w; VIEW.h = h;
-  Object.assign(camS, {zoom:1.14, x:0, z:0.5, shake:0});
+  Object.assign(camS, fitIsland(w/h), {shake:0});
   renderer.setSize(w, h, false); makeRT(); updateCam();
   renderer.setRenderTarget(rt); renderer.render(scene, cam);
   renderer.setRenderTarget(null); renderer.render(postScene, postCam);
@@ -4434,6 +4451,56 @@ function snapIsland(w, h){
   renderer.setSize(innerWidth, innerHeight); makeRT(); updateCam();
   for (const [o, v] of off) o.visible = v;
   return c;
+}
+/* ---- 出荷の記録：実物の大きさに置きかえて「～ぐらい」を添える（地酒=720ml瓶、牛乳=1L、小麦=5kg袋…） */
+const CMP = {
+  cat:   ['猫%n匹の重さ','as heavy as %n cats'], sumo:['力士%n人の重さ','as heavy as %n sumo wrestlers'],
+  car:   ['軽自動車%n台の重さ','as heavy as %n small cars'], eleph:['ゾウ%n頭の重さ','as heavy as %n elephants'],
+  whale: ['シロナガスクジラ%n頭の重さ','as heavy as %n blue whales'],
+  giraffe:['積むとキリン%n頭の高さ','stacked: %n giraffes tall'], tower:['積むと東京タワー%n本の高さ','stacked: %n Tokyo Towers tall'], fuji:['積むと富士山%n個の高さ','stacked: %n Mt. Fujis tall'],
+  ltower:['つなぐと東京タワー%n本の長さ','end to end: %n Tokyo Towers'], lfuji:['つなぐと富士山%n個の高さ','end to end: %n Mt. Fujis'], mara:['つなぐとマラソン%n回の距離','end to end: %n marathons'],
+  poly:  ['灯油ポリタンク%n個ぶん','%n jerrycans full'], bath:['家の風呂%n杯ぶん','%n bathtubs full'], tank:['タンクローリー%n台ぶん','%n tanker trucks full'], pool:['25mプール%n杯ぶん','%n swimming pools full'],
+  rice:  ['おにぎり%n個ぶん','enough for %n rice balls'], bread:['食パン%n斤ぶん','enough for %n loaves'],
+  kcal:  ['%n人が1年に使う塩','a year of salt for %n people'], cow:['牛%n頭の1日のごはん','a day’s feed for %n cows'], house:['家%n軒ぶんの家具','furniture for %n homes'],
+};
+const SHIP = {          // 数え方・[1つ分になる個数, たとえ]（小さい順）
+  wheat: [['袋','sacks'],   [[1/12,'bread'],[1200,'eleph']]],
+  rice:  [['袋','sacks'],   [[1/100,'rice'],[1200,'eleph']]],
+  veg:   [['個','pumpkins'],[[3,'cat'],[100,'sumo'],[600,'car'],[4000,'eleph']]],
+  flour: [['袋','bags'],    [[4,'cat'],[150,'sumo'],[900,'car'],[6000,'eleph']]],
+  cake:  [['個','cakes'],   [[110,'giraffe'],[6660,'tower'],[75500,'fuji']]],
+  pickle:[['瓶','jars'],    [[55,'giraffe'],[3330,'tower'],[37760,'fuji']]],
+  sake:  [['本','bottles'], [[28,'poly'],[278,'bath'],[13900,'tank'],[500000,'pool']]],
+  hay:   [['束','bales'],   [[0.5,'cow'],[300,'eleph']]],
+  milk:  [['本','bottles'], [[20,'poly'],[200,'bath'],[10000,'tank'],[360000,'pool']]],
+  butter:[['個','blocks'],  [[20,'cat'],[750,'sumo'],[4500,'car'],[30000,'eleph']]],
+  cheese:[['個','wheels'],  [[4,'cat'],[150,'sumo'],[900,'car'],[6000,'eleph']]],
+  aged:  [['玉','wheels'],  [[5,'sumo'],[30,'car'],[200,'eleph'],[5000,'whale']]],
+  salt:  [['kg','kg'],      [[4,'kcal']]],
+  log:   [['本','logs'],    [[83,'ltower'],[944,'lfuji'],[10500,'mara']]],
+  plank: [['枚','boards'],  [[166,'ltower'],[1888,'lfuji'],[21000,'mara']]],
+  furn:  [['点','pieces'],  [[10,'house']]],
+  ore:   [['個','chunks'],  [[15,'sumo'],[90,'car'],[600,'eleph'],[15000,'whale']]],
+  ingot: [['本','bars'],    [[15,'sumo'],[90,'car'],[600,'eleph'],[15000,'whale']]],
+  gear:  [['個','gears'],   [[2,'cat'],[75,'sumo'],[450,'car'],[3000,'eleph']]],
+};
+function shipList(isl){          // 金額の大きい順
+  const st = islandState(isl)?.stats; if (!st) return [];
+  const box = st.shipped || st.soldBy || {};
+  return ISLANDS[isl].items.filter(k => box[k] > 0).map(it => ({it, n:box[it]})).sort((a,b) => b.n*ITEMS[b.it].p - a.n*ITEMS[a.it].p).map(o => {
+    const [u, steps] = SHIP[o.it], hit = steps.filter(([per]) => o.n >= per).pop(), v = hit ? o.n/hit[0] : 0, num = fmt(o.n);
+    o.txt = [ITEMS[o.it].n[0]+' '+num+u[0], num+' '+u[1]+' of '+ITEMS[o.it].n[1].toLowerCase()];
+    o.like = hit ? [0,1].map(k => CMP[hit[1]][k].replace('%n', v < 10 ? String(Math.round(v*10)/10) : fmt(Math.round(v)))) : null;
+    if (o.like) o.like = [o.like[0]+'ぐらい', 'about '+o.like[1]];
+    o.all = [o.txt[0]+(o.like ? '（'+o.like[0]+'）' : ''), o.txt[1]+(o.like ? ' ('+o.like[1]+')' : '')];
+    return o;
+  });
+}
+const bestShips = kind => (kind === 'total' ? ISL_ORDER : [kind]).map(k => shipList(k)[0]).filter(Boolean).sort((a,b) => b.n*ITEMS[b.it].p - a.n*ITEMS[a.it].p);
+function shipHTML(kind){
+  const list = kind === 'total' ? bestShips(kind) : shipList(kind); if (!list.length) return '';
+  return '<h4 style="color:var(--hi);font-weight:normal;margin:10px 0 2px">'+L('総出荷量','Total shipped')+'</h4>' +
+    list.map(o => '<div class="ship"><b>'+N(o.txt)+'</b><span>'+(o.like ? N(o.like) : '')+'</span></div>').join('');
 }
 /* ---- スコア：島ごと1000点（開拓・速さ・幸福・にぎわい・その島ならでは）。総合は3島の平均でランク */
 const RANK_AT = [['S',900],['A',760],['B',560],['C',300],['D',0]];
@@ -4489,8 +4556,8 @@ function showScore(kind){
     body = '<img class="rankimg" src="'+rankImg(kind, R.rk)+'" alt="'+R.rk+'">' +
       '<div class="scorehead"><span class="rk rk'+R.rk+'">'+R.rk+'</span><span><b>'+fmt(R.total)+'</b> / '+fmt(R.max)+'<br>『'+N(RANK_NAME[kind][R.rk])+'』</span></div>' +
       R.parts.map(p => '<div class="srow"><span>'+N(p.n)+(p.rk ? ' '+p.rk : '')+'</span><div class="bar"><i style="width:'+(p.v/p.max*100)+'%"></i></div><em>'+fmt(p.v)+'</em></div>').join('') +
-      '<div class="kv" style="color:var(--sub);margin-top:6px">'+(up ? L('次の'+up[0]+'ランクまで あと'+fmt(Math.ceil(up[1]*unit - R.total))+'点。伸びしろ：'+N(weak.tip), fmt(Math.ceil(up[1]*unit - R.total))+' points to rank '+up[0]+'. Most to gain: '+N(weak.tip)) : L('最高ランク！','The highest rank!'))+'</div>' +
-      '<div class="bgrid"><button class="btn hot" data-act="scoreX:'+kind+'">'+L('Xにポスト','Post on X')+'</button><button class="btn hot" data-act="share:'+kind+'">'+L('画像でシェア','Share as image')+'</button></div>';
+      '<div class="kv" style="color:var(--sub);margin-top:6px">'+(up ? L('次の'+up[0]+'ランクまで あと'+fmt(Math.ceil(up[1]*unit - R.total))+'点。伸びしろ：'+N(weak.tip), fmt(Math.ceil(up[1]*unit - R.total))+' points to rank '+up[0]+'. Most to gain: '+N(weak.tip)) : L('最高ランク！','The highest rank!'))+'</div>' + shipHTML(kind) +
+      '<div class="bgrid"><button class="btn hot" data-act="share:'+kind+'">'+L('島の画像でXにシェア','Share on X with your island')+'</button></div>';
   }
   $('#modal .mbox').innerHTML = '<h2>'+L('スコア','Score')+'：'+scoreTitle(kind)+'</h2><div class="seg">' +
     [...ISL_ORDER, 'total'].map(k => segBtn('score:'+k, k === 'total' ? L('総合','Total') : N(islName(k)), k === kind)).join('') + '</div>' + body +
@@ -4498,10 +4565,10 @@ function showScore(kind){
   $('#modal').hidden = false;
 }
 function scoreText(kind){
-  const R = scoreOf(kind), ja = SET.lang !== 'en', nm = RANK_NAME[kind][R.rk];
+  const R = scoreOf(kind), ja = SET.lang !== 'en', nm = RANK_NAME[kind][R.rk], top = bestShips(kind)[0], rec = top ? (ja ? top.all[0] : top.all[1])+'\n' : '';
   return ja
-    ? (kind === 'total' ? 'ジオラマアイランド 総合スコア' : (R.name ? '「'+R.name+'」' : islName(kind)[0]+'のスコア'))+' '+fmt(R.total)+'/'+fmt(R.max)+'\nランク'+R.rk+'『'+nm[0]+'』\n#ジオラマアイランド'
-    : (kind === 'total' ? 'Diorama Island total score' : (R.name ? '“'+R.name+'”' : islName(kind)[1]+' score'))+': '+fmt(R.total)+'/'+fmt(R.max)+'\nRank '+R.rk+', '+nm[1]+'\n#DioramaIsland';
+    ? (kind === 'total' ? 'ジオラマアイランド 総合スコア' : (R.name ? '「'+R.name+'」' : islName(kind)[0]+'のスコア'))+' '+fmt(R.total)+'/'+fmt(R.max)+'\nランク'+R.rk+'『'+nm[0]+'』\n'+rec+'#ジオラマアイランド'
+    : (kind === 'total' ? 'Diorama Island total score' : (R.name ? '“'+R.name+'”' : islName(kind)[1]+' score'))+': '+fmt(R.total)+'/'+fmt(R.max)+'\nRank '+R.rk+', '+nm[1]+'\n'+rec+'#DioramaIsland';
 }
 // ランクの絵がカードに出る中継ページ（r/）。いま居る島なら、開いた人はそのまま訪問できる
 const scoreURL = kind => new URL('r/'+kind+'_'+scoreOf(kind).rk+'.html', location.origin + location.pathname).href + (kind === ISLAND ? new URL(visitURL()).hash : '');
@@ -4510,26 +4577,48 @@ function openX(text, url){
   window.open('https://x.com/intent/post?text='+encodeURIComponent(text)+'&url='+encodeURIComponent(url), '_blank', 'noopener');
 }
 function loadImg(src){ return new Promise(r => { const im = new Image(); im.onload = () => r(im); im.onerror = () => r(null); im.src = src; }); }
-async function paintScore(g, kind, X, w, line){
-  const R = scoreOf(kind), art = await loadImg(rankImg(kind, R.rk)), PAP = '#f6ecc9', HI = '#ffd35a', SUB = '#a9b3e6';
-  g.imageSmoothingEnabled = false;
-  if (art) g.drawImage(art, 28, 28, 756, 425);
-  line(L('ジオラマアイランド','Diorama Island'), 72, 24, SUB);
-  line(R.name || scoreTitle(kind), 130, 42, '#fff');
-  line(kind === 'total' ? L('3つの島の合計','All three islands') : N(islName(kind))+'　Day '+R.day, 168, 24, SUB);
-  line(L('ランク ','Rank ')+R.rk, 250, 72, {S:'#ffe070', A:'#ffc860', B:'#d0e4f4', C:'#e0a070', D:'#a8b0c0'}[R.rk]);
-  line('『'+N(RANK_NAME[kind][R.rk])+'』', 298, 30, HI);
-  line(fmt(R.total)+' / '+fmt(R.max), 356, 46, PAP);
-  if (kind === ISLAND && shareShot) g.drawImage(shareShot, X + 20, 380, 280, 229);
-  line('sin1.studio/diorama', 642, 22, HI);
-  const rowH = Math.min(38, 196/R.parts.length);
-  R.parts.forEach((p, k) => {
-    const y = 470 + k*rowH;
-    g.font = '24px DotGothic16, monospace'; g.fillStyle = SUB; g.fillText(N(p.n)+(p.rk ? ' '+p.rk : ''), 40, y + 20);
-    g.fillStyle = '#0b0f26'; g.fillRect(290, y + 2, 380, 20);
-    g.fillStyle = p.v >= p.max*0.8 ? HI : '#7ee08a'; g.fillRect(290, y + 2, 380*p.v/p.max, 20);
-    g.fillStyle = PAP; g.fillText(fmt(p.v), 688, y + 20);
+const PH = {x:16, y:16, w:1168, h:643, band:118};          // 写真の枠・下の帯
+async function paintScore(g, kind, tx, tag){
+  const R = scoreOf(kind), art = await loadImg(rankImg(kind, R.rk)), HI = '#ffd35a', SUB = '#a9b3e6', PAP = '#f6ecc9';
+  const rc = {S:'#ffe070', A:'#ffc860', B:'#d0e4f4', C:'#e0a070', D:'#a8b0c0'}[R.rk], by = PH.y + PH.h - PH.band;
+  if (kind === 'total'){
+    const cw = (PH.w - 4*8)/3;
+    for (let k=0;k<3;k++){
+      const isl = ISL_ORDER[k], r = calcScore(isl), x = PH.x + 8 + k*(cw + 8), y = 108;
+      const u = r ? getPhoto(isl) : null, im = u ? await loadImg(u) : r ? await loadImg(rankImg(isl, r.rk)) : null, hh = cw*420/480;
+      g.fillStyle = '#0b0f26'; g.fillRect(x, y, cw, hh);
+      if (im){ const kk = Math.min(cw/im.width, hh/im.height); g.drawImage(im, x + (cw - im.width*kk)/2, y + (hh - im.height*kk)/2, im.width*kk, im.height*kk); }
+      else tx(L('未上陸','Not yet visited'), x + cw/2, y + hh/2, cw, 24, SUB, 'center');
+      const best = r ? shipList(isl)[0] : null;
+      tx(N(islName(isl))+(r ? '　'+r.rk+' '+fmt(r.total) : ''), x + cw/2, y + hh + 34, cw, 26, '#fff', 'center');
+      if (best){ tx(N(best.txt), x + cw/2, y + hh + 68, cw, 24, HI, 'center'); if (best.like) tx(N(best.like), x + cw/2, y + hh + 96, cw, 19, PAP, 'center'); }
+    }
+    tx(L('ジオラマアイランド','Diorama Island'), 40, 64, 420, 30, '#fff');
+    tx(L('ランク','Rank')+' '+R.rk+'『'+N(RANK_NAME.total[R.rk])+'』', 600, 64, 440, 28, rc, 'center');
+    tx(fmt(R.total)+' / '+fmt(R.max), 1160, 66, 300, 40, PAP, 'right');
+    tx('sin1.studio/diorama', 1160, 640, 340, 20, HI, 'right');
+    return;
+  }
+  if (kind === ISLAND) g.drawImage(shareShot, PH.x, PH.y, PH.w, PH.h - PH.band);
+  else { const u = getPhoto(kind), im = await loadImg(u || rankImg(kind, R.rk)); if (im){ const kk = Math.min(PH.w/im.width, (PH.h-PH.band)/im.height); g.drawImage(im, 600 - im.width*kk/2, PH.y, im.width*kk, im.height*kk); } }
+  tag(28, 28, [[R.name || N(islName(kind)), 34, '#fff'], [(R.name ? N(islName(kind))+'　' : '')+'Day '+R.day, 20, SUB]]);
+  g.fillStyle = 'rgba(27,31,58,.9)'; g.fillRect(950, 28, 222, 222);
+  if (art) g.drawImage(art, 957, 35, 208, 117);
+  tx(L('ランク ','Rank ')+R.rk+'　'+fmt(R.total), 1061, 192, 208, 30, rc, 'center');
+  tx('『'+N(RANK_NAME[kind][R.rk])+'』', 1061, 228, 208, 20, HI, 'center');
+  shipBand(g, kind, tx, by);
+}
+function shipBand(g, kind, tx, by){
+  g.fillStyle = '#1b1f3a'; g.fillRect(PH.x, by, PH.w, PH.band);
+  const list = shipList(kind).slice(0, 3);
+  tx(L('総出荷量','Total shipped'), 40, by + 30, 300, 18, '#a9b3e6');
+  if (!list.length) tx(L('これから','Nothing yet'), 40, by + 72, 400, 28, '#f6ecc9');
+  list.forEach((o, k) => {
+    const x = 40 + k*378;
+    tx(N(o.txt), x, by + 68, 360, k ? 26 : 30, k ? '#f6ecc9' : '#ffd35a');
+    if (o.like) tx(N(o.like), x, by + 98, 360, 19, '#a9b3e6');
   });
+  tx('sin1.studio/diorama', 1160, by + 30, 340, 18, '#ffd35a', 'right');
 }
 let shareShot = null, shareBlob = null, shareSeq = 0, shareKind = 'photo';
 function fitText(g, text, w, px){ do { g.font = px+'px DotGothic16, monospace'; } while (g.measureText(text).width > w && --px > 14); g.fillText(text, 0, 0); }
@@ -4538,31 +4627,26 @@ async function drawCard(){
   try { await document.fonts.load('32px DotGothic16', 'ジオラマ島'+myName()); } catch(e){}
   if (seq !== shareSeq || !shareShot) return;
   const c = document.createElement('canvas'); c.width = 1200; c.height = 675;
-  const g = c.getContext('2d'), PAP = '#f6ecc9', INK = '#1b1f3a', HI = '#ffd35a';
-  g.fillStyle = PAP; g.fillRect(0, 0, 1200, 675);
-  g.fillStyle = INK; g.fillRect(16, 16, 1168, 643);
-  const X = 812, w = 356, line = (t, y, px, col) => { g.save(); g.translate(X, y); g.fillStyle = col; fitText(g, t, w, px); g.restore(); };
-  if (shareKind !== 'photo'){
-    await paintScore(g, shareKind, X, w, line);
-    if (seq === shareSeq) publishCard(c, seq);
-    return;
+  const g = c.getContext('2d'); g.imageSmoothingEnabled = false;
+  g.fillStyle = '#f6ecc9'; g.fillRect(0, 0, 1200, 675);
+  g.fillStyle = '#1b1f3a'; g.fillRect(PH.x, PH.y, PH.w, PH.h);
+  const tx = (t, x, y, w, px, col, al = 'left') => { g.save(); g.translate(x, y); g.fillStyle = col; g.textAlign = al; fitText(g, t, w, px); g.restore(); };
+  const tag = (x, y, rows) => {          // 左上の名札
+    let w = 0, h = 14;
+    for (const [t, px] of rows){ g.font = px+'px DotGothic16, monospace'; w = Math.max(w, Math.min(340, g.measureText(t).width)); h += px + 10; }
+    g.fillStyle = 'rgba(27,31,58,.9)'; g.fillRect(x, y, w + 28, h);
+    let yy = y + 6;
+    for (const [t, px, col] of rows){ yy += px + 8; tx(t, x + 14, yy, 340, px, col); }
+  };
+  if (shareKind !== 'photo') await paintScore(g, shareKind, tx, tag);
+  else {
+    g.drawImage(shareShot, PH.x, PH.y, PH.w, PH.h - PH.band);
+    const rows = [[myName(), 34, '#fff'], [(cleanName(S.name) ? N(islName(ISLAND))+'　' : '')+'Day '+S.day, 20, '#a9b3e6'], ['『'+N(evaluate().main[0])+'』', 22, '#ffd35a']], star = starCow();
+    if (star) rows.push([L('看板牛 ','Star cow: ')+N(COW_NAMES[star.name]), 20, '#ffb8d8']);
+    tag(28, 28, rows);
+    shipBand(g, ISLAND, tx, PH.y + PH.h - PH.band);
   }
-  g.drawImage(shareShot, 28, 28);
-  line(L('ジオラマアイランド','Diorama Island'), 78, 24, '#a9b3e6');
-  line(myName(), 142, 46, '#fff');
-  line(N(islName(ISLAND))+'　Day '+S.day, 186, 24, '#a9b3e6');
-  g.fillStyle = '#4a5290'; g.fillRect(X, 210, w, 3);
-  const st = S.stats, rows = [
-    [L('称号','Title'), '『'+N(evaluate().main[0])+'』', HI],
-    [L('稼いだ総額','Total earned'), fmt(st.earned)+' G', PAP],
-    [L('平均幸福','Avg happiness'), String(Math.round(st.moodN ? st.moodSum/st.moodN : S.mood)), PAP],
-  ];
-  const star = starCow();
-  if (star) rows.push([L('看板牛','Star cow'), N(COW_NAMES[star.name])+(star.total ? L('（乳 '+star.total+'）',' ('+star.total+' milk)') : ''), '#ffb8d8']);
-  else if (S.story.length) rows.push([L('最近のできごと','Latest chapter'), N(S.story[S.story.length-1].t), PAP]);
-  rows.forEach(([a, b, col], k) => { line(a, 256 + k*86, 20, '#a9b3e6'); line(b, 294 + k*86, 30, col); });
-  line('sin1.studio/diorama', 630, 24, HI);
-  publishCard(c, seq);
+  if (seq === shareSeq) publishCard(c, seq);
 }
 function publishCard(c, seq){
   c.toBlob(b => {
@@ -4578,7 +4662,7 @@ function showShare(kind = 'photo'){
   if (VISIT) return;
   shareKind = (kind === 'total' || (ISLANDS[kind] && calcScore(kind))) ? kind : 'photo';
   closePanel(); select(-1); cancelMode();
-  shareShot = snapIsland(756, 618);
+  takePhoto(); shareShot = snapIsland(PH.w, PH.h - PH.band);
   let canFiles = false;
   try { canFiles = !!navigator.canShare?.({files:[new File(['x'], 'a.png', {type:'image/png'})]}); } catch(e){}
   const b = (act, label, img, hot) => '<button class="btn'+(hot?' hot':'')+'" data-act="'+act+'" '+(img?'data-needimg disabled':'')+'>'+label+'</button>';
@@ -4587,9 +4671,9 @@ function showShare(kind = 'photo'){
     '<div class="seg" style="margin-bottom:6px">'+segBtn('share:photo', L('絵はがき','Postcard'), shareKind === 'photo')+segBtn('share:'+ISLAND, L('この島のスコア','Island score'), ownScore)+segBtn('share:total', L('総合スコア','Total score'), shareKind === 'total')+'</div>' +
     '<label class="kv" '+(named?'':'hidden')+'>'+L('島の名前','Island name')+'<input id="nameIn" maxlength="'+SH_NAME_MAX+'" autocomplete="off"></label>' +
     '<img id="shareImg" class="shareimg" alt="">' +
-    '<div class="bgrid">' + b('shareX', L('Xにポスト','Post on X'), true, true) + (canFiles ? b('shareNative', L('画像つきで共有','Share with image'), true, true) : '') + b('shareCopyImg', L('画像をコピー','Copy image'), true) +
+    '<div class="bgrid">' + (canFiles && TOUCH ? b('shareNative', L('島の画像つきで共有（Xも）','Share with the image (X too)'), true, true) : '') + b('shareX', L('画像をコピーしてXへ','Copy image & open X'), true, !(canFiles && TOUCH)) + b('shareCopyImg', L('画像をコピー','Copy image'), true) +
     b('shareSave', L('画像を保存','Save image'), true) + b('shareLink', L('訪問リンクをコピー','Copy visit link'), false) + '</div>' +
-    '<p class="kv" style="color:var(--sub)">'+L('リンクを開いた人は、いまのあなたの島を見て回れます（相手のセーブには影響しません）。Xにはランクの絵が自動で表示されます。上の画像を載せたいときは、コピーか保存をして貼ってください。','Anyone opening the link can look around your island as it is now (their save is untouched). X shows your rank illustration automatically. To post the image above instead, copy or save it and paste it in.')+'</p>' +
+    '<p class="kv" style="color:var(--sub)">'+L('リンクを開いた人は、いまのあなたの島を見て回れます（相手のセーブには影響しません）。「画像をコピーしてXへ」は、開いた投稿画面に貼り付ける（Ctrl+V）と上の画像が大きく載ります。','Anyone opening the link can look around your island as it is now (their save is untouched). “Copy image & open X”: paste (Ctrl+V) into the post so the picture above becomes the main image.')+'</p>' +
     '<div class="opts"><button class="opt" data-act="closeModal"><div class="n">◀ '+L('もどる','Back')+'</div></button></div>';
   const inp = $('#nameIn'); inp.value = cleanName(S.name); inp.placeholder = N(islName(ISLAND));
   inp.addEventListener('input', () => { S.name = cleanName(inp.value); for (const e of document.querySelectorAll('[data-needimg]')) e.disabled = true; drawCard(); });
@@ -4597,7 +4681,10 @@ function showShare(kind = 'photo'){
   $('#modal').hidden = false;
   drawCard();
 }
-const shareText = () => L('「'+myName()+'」Day '+S.day+'『'+evaluate().main[0][0]+'』\n空に浮かぶわたしの島、見に来てね！\n#ジオラマアイランド','“'+myName()+'” Day '+S.day+': '+evaluate().main[0][1]+'\nCome visit my island in the sky!\n#DioramaIsland');
+const shareText = () => {
+  const top = bestShips(ISLAND)[0];
+  return L('「'+myName()+'」Day '+S.day+'『'+evaluate().main[0][0]+'』\n'+(top ? top.all[0]+'\n' : '')+'#ジオラマアイランド', '“'+myName()+'” Day '+S.day+': '+evaluate().main[0][1]+'\n'+(top ? top.all[1]+'\n' : '')+'#DioramaIsland');
+};
 function copyText(t){
   const done = () => toast(L('訪問リンクをコピーした','Visit link copied'), 'good');
   const manual = () => { const a = document.createElement('input'); a.value = t; a.readOnly = true; $('#modal .mbox').appendChild(a); a.select(); toast(L('このリンクをコピーしてください','Copy this link'), 'ev'); };
@@ -4608,6 +4695,9 @@ function shareAct(act){
   if (!shareBlob) return;
   const photo = shareKind === 'photo', text = photo ? shareText() : scoreText(shareKind), url = scoreURL(photo ? ISLAND : shareKind);
   if (act === 'shareX'){
+    // 投稿画面は画像を受け取れないので、先にコピー。待ってから開くとポップアップとして止められる
+    const ng = () => toast(L('画像をコピーできなかった。「画像を保存」から添付してください','Could not copy the image. Use “Save image” and attach it'), 'bad');
+    try { navigator.clipboard.write([new ClipboardItem({'image/png':shareBlob})]).then(() => toast(L('画像をコピーした。投稿画面に貼り付けよう','Image copied. Paste it into the post'), 'good'), ng); } catch(e){ ng(); }
     openX(text, url);
   } else if (act === 'shareNative'){
     navigator.share({files:[new File([shareBlob], 'diorama-island.png', {type:'image/png'})], text:text+'\n'+url}).catch(()=>{});
@@ -4645,6 +4735,8 @@ function showTitle(){
 }
 S = VISIT ? visitState() : (load() || newState());
 for (const k of ITEM_KEYS){ S.items[k] ??= 0; S.sat[k] ??= 1; S.stats.made[k] ??= 0; S.stats.soldBy[k] ??= 0; }
+S.stats.shipped ??= {...S.stats.soldBy};          // 注文への納品も数える（前のセーブは売った数から）
+for (const k of ITEM_KEYS) S.stats.shipped[k] ??= 0;
 makeClouds();
 orderChips();
 const grazingIsNew = !VISIT && initHerd();
@@ -4661,6 +4753,7 @@ renderTop();
 if (S.tut < 0) for (const e of EVENTS) if (e.fixed && islOk(e) && !S.doneEvents[e.id] && S.day >= e.fixed){ queuedIds[e.id] = true; const E = e.make(); E.id = e.id; eventQueue.push(E); }
 if (VISIT){ enterVisit(); eventQueue.length = 0; } else if (S.arrived) showArrival(); else showTitle();
 requestAnimationFrame(frame);
+if (!VISIT && !getPhoto(ISLAND)) setTimeout(takePhoto, 2500);
 
 // テスト・デバッグ用の窓口
 window.DTT = {get S(){return S;}, P, W, WH, place, hire, levelUp, sell, clickCell, collect, moveBuilding, chooseEvent, workers, allB, evaluate, treeCount, sim, onDawn, EVENTS, eventQueue, critters, expandIsland,
