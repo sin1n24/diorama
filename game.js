@@ -4143,8 +4143,8 @@ function scoreText(kind){
     ? (kind === 'total' ? 'ジオラマアイランド 総合スコア' : (R.name ? '「'+R.name+'」' : islName(kind)[0]+'のスコア'))+' '+fmt(R.total)+'/'+fmt(R.max)+'\nランク'+R.rk+'『'+nm[0]+'』\n#ジオラマアイランド'
     : (kind === 'total' ? 'Diorama Island total score' : (R.name ? '“'+R.name+'”' : islName(kind)[1]+' score'))+': '+fmt(R.total)+'/'+fmt(R.max)+'\nRank '+R.rk+', '+nm[1]+'\n#DioramaIsland';
 }
-// いま居る島なら訪問リンク、ほかはゲームのURL
-const scoreURL = kind => kind === ISLAND ? visitURL() : location.origin + location.pathname;
+// ランクの絵がカードに出る中継ページ（r/）。いま居る島なら、開いた人はそのまま訪問できる
+const scoreURL = kind => new URL('r/'+kind+'_'+scoreOf(kind).rk+'.html', location.origin + location.pathname).href + (kind === ISLAND ? new URL(visitURL()).hash : '');
 function openX(text, url){
   // 投稿画面を開くだけ。投稿するかどうかは本人が決める
   window.open('https://x.com/intent/post?text='+encodeURIComponent(text)+'&url='+encodeURIComponent(url), '_blank', 'noopener');
@@ -4229,7 +4229,7 @@ function showShare(kind = 'photo'){
     '<img id="shareImg" class="shareimg" alt="">' +
     '<div class="bgrid">' + b('shareX', L('Xにポスト','Post on X'), true, true) + (canFiles ? b('shareNative', L('画像つきで共有','Share with image'), true, true) : '') + b('shareCopyImg', L('画像をコピー','Copy image'), true) +
     b('shareSave', L('画像を保存','Save image'), true) + b('shareLink', L('訪問リンクをコピー','Copy visit link'), false) + '</div>' +
-    '<p class="kv" style="color:var(--sub)">'+L('リンクを開いた人は、いまのあなたの島を見て回れます（相手のセーブには影響しません）。Xには画像が自動では付かないので、コピーか保存をして貼ってください。','Anyone opening the link can look around your island as it is now (their save is untouched). X cannot attach the image automatically, so copy or save it and paste it in.')+'</p>' +
+    '<p class="kv" style="color:var(--sub)">'+L('リンクを開いた人は、いまのあなたの島を見て回れます（相手のセーブには影響しません）。Xにはランクの絵が自動で表示されます。上の画像を載せたいときは、コピーか保存をして貼ってください。','Anyone opening the link can look around your island as it is now (their save is untouched). X shows your rank illustration automatically. To post the image above instead, copy or save it and paste it in.')+'</p>' +
     '<div class="opts"><button class="opt" data-act="closeModal"><div class="n">◀ '+L('もどる','Back')+'</div></button></div>';
   const inp = $('#nameIn'); inp.value = cleanName(S.name); inp.placeholder = N(islName(ISLAND));
   inp.addEventListener('input', () => { S.name = cleanName(inp.value); for (const e of document.querySelectorAll('[data-needimg]')) e.disabled = true; drawCard(); });
@@ -4246,7 +4246,7 @@ function copyText(t){
 function shareAct(act){
   if (act === 'shareLink'){ copyText(visitURL()); return; }
   if (!shareBlob) return;
-  const photo = shareKind === 'photo', text = photo ? shareText() : scoreText(shareKind), url = photo ? visitURL() : scoreURL(shareKind);
+  const photo = shareKind === 'photo', text = photo ? shareText() : scoreText(shareKind), url = scoreURL(photo ? ISLAND : shareKind);
   if (act === 'shareX'){
     openX(text, url);
   } else if (act === 'shareNative'){
