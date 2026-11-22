@@ -108,9 +108,10 @@ button{font:inherit;color:inherit;cursor:pointer}
 .shareimg{display:block;width:100%;aspect-ratio:16/9;background:#0b0f26;margin-top:8px}
 #visit{position:absolute;left:8px;top:8px;max-width:calc(100% - 16px);padding:6px 10px;display:flex;gap:14px;align-items:center;line-height:1.4}
 #visit b{color:var(--hi);font-weight:normal}
-body.visiting #top,body.visiting #side,body.visiting #bottom,body.visiting #bellBtn,body.visiting #missions{display:none!important}
-#bellBtn{position:absolute;left:8px;bottom:62px;font-size:16px;padding:8px 14px}
-#bellBtn:not([hidden]) ~ #toasts{bottom:112px}
+body.visiting #top,body.visiting #side,body.visiting #bottom,body.visiting #bellBtn,body.visiting #farmBtn,body.visiting #missions{display:none!important}
+#bellBtn,#farmBtn{position:absolute;left:8px;bottom:62px;font-size:16px;padding:8px 14px}
+#bellBtn:not([hidden]) ~ #toasts,#farmBtn:not([hidden]) ~ #toasts{bottom:112px}
+body.tooling #confirm [data-act="confirmYes"]{display:none}
 #toasts{position:absolute;left:8px;bottom:62px;display:flex;flex-direction:column;gap:4px;pointer-events:none;max-width:min(360px,calc(100vw - 32px))}
 .toast{background:rgba(27,31,58,.92);border:2px solid var(--paper);padding:4px 8px;font-size:13px;animation:tin .15s steps(3)}
 .toast.good{border-color:var(--ok)} .toast.bad{border-color:var(--ng)} .toast.ev{border-color:var(--hi)}
@@ -130,9 +131,9 @@ body.visiting #top,body.visiting #side,body.visiting #bottom,body.visiting #bell
 @media (max-width:700px){
   html,body{font-size:13px}
   #side{top:auto;bottom:62px;width:200px}
-  #toasts,#bellBtn:not([hidden]) ~ #toasts{bottom:auto;top:130px}
-  #bellBtn{font-size:13px}
-  body.placing #bellBtn, body.panel-open #bellBtn{display:none}
+  #toasts,#bellBtn:not([hidden]) ~ #toasts,#farmBtn:not([hidden]) ~ #toasts{bottom:auto;top:130px}
+  #bellBtn,#farmBtn{font-size:13px}
+  body.placing #bellBtn, body.panel-open #bellBtn, body.placing #farmBtn, body.panel-open #farmBtn{display:none}
   #bottom .btn{font-size:13px;padding:7px 9px}
   #goldChip{font-size:15px}
   #bpanel{top:auto;bottom:62px;left:8px;right:8px;width:auto;max-height:46vh}
@@ -174,6 +175,7 @@ body.visiting #top,body.visiting #side,body.visiting #bottom,body.visiting #bell
     <button class="btn" data-act="panel:area" id="btnArea"></button>
   </div>
   <button class="btn hot" id="bellBtn" data-act="bell" hidden></button>
+  <button class="btn hot" id="farmBtn" data-act="farm" hidden></button>
   <div id="visit" class="px" hidden></div>
   <div id="toasts"></div>
   <div id="tip" class="px"></div>
