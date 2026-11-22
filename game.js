@@ -178,15 +178,59 @@ const UPGS = [
     [['石畳の道','Cobblestone'], ['よく通る道が石畳になり、その上は速く歩ける','Worn paths get paved, and walking on them is faster.']],
     [['街灯のある道','Lamplit Roads'], ['石畳に街灯が立ち、さらに速く歩ける。夜の作業と移動 +30%','Street lamps line the paving for faster walking. Night work and walking +30%.']]]},
 ];
+// 島ごとの暮らし：空=欧風の開拓村／酪農=山の牧場／農耕=和の里
+const FLAVOR = {
+  sky: {
+    icon:{},
+    house:[['三角屋根','Hip roof'], ['切妻屋根','Gable roof'], ['とんがり屋根','Spire'], ['平屋根と花','Flat & flowers']],
+    walls:[0xf2d9b0, 0xd9e6f2, 0xf2c9c9, 0xd8f0c8, 0xf0e6a8, 0xe4e4e4, 0xc9b8e8],
+    roofs:[0xd05a4a, 0x4a6ab0, 0x3a8a6a, 0xa05ac0, 0xd08a3a, 0x5a5a5a, 0x2a8ab0],
+    open:['回転木馬がまわりはじめた。飛行船の観光客たちが、さっそく列をつくっている。レベルを上げると乗り物が増える。','The carousel starts to turn, and airship tourists are already lining up. Level it up for more rides.'],
+    air:[['乗合飛行船','Ferry Airship'], ['観光飛行船','Tour Airship'], ['遊覧飛行船','Pleasure Airship'], ['王室飛行船','Royal Airship']],
+    perk:['大きく豪華になるほど観光客が増える','A grander airship brings more tourists'],
+  },
+  dairy: {
+    b:{
+      bakery:{n:['ソフトクリーム屋','Ice Cream Stand'], d:['しぼりたての乳で幸福が上がる（毎日20G）','Fresh milk treats raise happiness (20G/day).']},
+      park:  {n:['ふれあい牧場','Petting Farm'], d:['2×2マスの羊とうさぎ。幸福が上がる（維持費なし）','A 2×2 paddock of sheep and rabbits. Raises happiness, no upkeep.']},
+      bath:  {n:['たるサウナ','Barrel Sauna'], d:['幸福が上がり、夜勤の疲れが半分になる（毎日25G）','Raises happiness and halves night-shift fatigue (25G/day).']},
+      fun:   {n:['牧場サーカス','Ranch Circus'], d:['牛が多いほど観光客がお金を落とす。レベルで空中ブランコと牛の気球','More cows mean bigger takings. Levels add a swing and a cow balloon.']},
+    },
+    icon:{bakery:'🍦', park:'🐑', bath:'🪵', fun:'🎪'},
+    house:[['山小屋','Chalet'], ['赤い納屋','Red barn'], ['丸太小屋','Log cabin'], ['石積みの塔','Stone tower']],
+    walls:[0xf4efe4, 0xa8573a, 0xc89058, 0x8a5a38, 0xe8d0a0, 0xb8b4a8, 0xd8c0c8],
+    roofs:[0x6a3a2a, 0x3a5a48, 0xc03a30, 0x4a4a52, 0x2f5f8a, 0xe0d8c8, 0x8a6a3a],
+    open:['テントの幕が上がり、牛たちが玉乗りをはじめた。牛が多い島ほど観光客はお金を落とす。','Up goes the curtain, and the cows begin to perform. The bigger your herd, the more tourists spend.'],
+    air:[['子牛号','The Calf'], ['カウベル号','The Cowbell'], ['ミルク缶号','The Milk Churn'], ['金角の女王号','The Golden Horn']],
+    perk:['牛が多いほど観光客がお金を落とす','Tourists spend more when your herd is big'],
+  },
+  farm: {
+    b:{
+      bakery:{n:['寿司屋','Sushi Bar'], d:['島の米で握る。幸福が上がる（毎日20G）','Rolled with island rice. Raises happiness (20G/day).']},
+      park:  {n:['日本庭園','Japanese Garden'], d:['2×2マスの池と桜。幸福が上がる（維持費なし）','A 2×2 pond and cherry tree. Raises happiness, no upkeep.']},
+      bath:  {n:['露天風呂','Open-air Hot Spring'], d:['幸福が上がり、夜勤の疲れが半分になる（毎日25G）','Raises happiness and halves night-shift fatigue (25G/day).']},
+      fun:   {n:['縁日と花火','Lantern Festival'], d:['秋の収穫祭に観光客が殺到。レベルで鳥居と五重塔・花火','Tourists flock in autumn. Levels add a torii, pagoda and fireworks.']},
+    },
+    icon:{bakery:'🍣', park:'🌸', bath:'♨️', fun:'🏮'},
+    house:[['かやぶき','Thatched'], ['瓦屋根','Tiled roof'], ['蔵','Storehouse'], ['町家','Townhouse']],
+    walls:[0xf4f0e4, 0xd8c098, 0xa87848, 0xe8d8b8, 0xc8b8a0, 0x8a6040, 0xe4c8b8],
+    roofs:[0x3a4250, 0x9a7a48, 0x2f4a5a, 0x6a4a38, 0x7a8a5a, 0xa04a38, 0x4a3a58],
+    open:['やぐらに提灯がともり、屋台が並んだ。秋の収穫祭には観光客が殺到する。','Lanterns light the tower and the stalls open. Tourists flood in for the autumn harvest.'],
+    air:[['日の丸気球船','Sunrise Airship'], ['提灯船','Lantern Airship'], ['帆かけ船','Sailing Airship'], ['宝船','Treasure Ship']],
+    perk:['観光客は季節で増減：春×1 夏×1.1 秋×1.7 冬×0.8','Tourism by season: spring ×1, summer ×1.1, autumn ×1.7, winter ×0.8'],
+  },
+};
+const FLV = FLAVOR[ISLAND];
+for (const k in FLV.b) Object.assign(BUILD[k], FLV.b[k]);
 // 経営方針：幸福を削って、効率ともうけを取る（1日1回だけ変えられる）
 const DRIVE = [
   {n:['優良経営','Good Management'],   work:1,   sale:1,    mood:0,   d:['いつもどおり','As usual']},
   {n:['ブラック経営','Sweatshop'],     work:1.5, sale:1.1,  mood:-15, d:['作業+50%・売値+10%・幸福-15','Work +50%, sales +10%, happiness -15']},
   {n:['社畜の島','Island of Drones'], work:2.1, sale:1.25, mood:-30, d:['作業+110%・売値+25%・幸福-30・故障あり','Work +110%, sales +25%, happiness -30, breakdowns']},
 ];
-const HOUSE_WALLS = [0xf2d9b0, 0xd9e6f2, 0xf2c9c9, 0xd8f0c8, 0xf0e6a8, 0xe4e4e4, 0xc9b8e8];
-const HOUSE_ROOFS = [0xd05a4a, 0x4a6ab0, 0x3a8a6a, 0xa05ac0, 0xd08a3a, 0x5a5a5a, 0x2a8ab0];
-const HOUSE_STYLES = [['三角屋根','Hip roof'], ['切妻屋根','Gable roof'], ['とんがり屋根','Spire'], ['平屋根と花','Flat & flowers']];
+const HOUSE_WALLS = FLV.walls;
+const HOUSE_ROOFS = FLV.roofs;
+const HOUSE_STYLES = FLV.house;
 const LOOK_COST = {s:5, w:2, r:2};   // 屋根の形5G・色2G
 const W = 12, WH = 5 + 10*W;   // 盤面は12×12。最初は中央の10×10が島。市場は(5,10)
 const DEBUG = /debug/.test(location.search);
@@ -888,9 +932,182 @@ function makeRock(c){
   g.rotation.y = c.r*6.28; return g;
 }
 function houseLook(b, r){ return b && b.look ? b.look : {s: Math.floor(r*4)%4, w: Math.floor(r*HOUSE_WALLS.length), r: Math.floor(r*7)%HOUSE_ROOFS.length}; }
+// 切妻屋根：棟は x 方向（turn で z 方向）
+function gable(g, hex, x, base, z, depth, high, len, turn){
+  const p = new THREE.Group(), sz = high/1.5, m = part(G.cyl3, hex, depth/1.732, len, sz, 0, sz*0.5, 0);
+  m.rotation.set(-Math.PI/2, 0, Math.PI/2); p.add(m); p.position.set(x, base, z); if (turn) p.rotation.y = Math.PI/2; g.add(p);
+}
+const door = (g, x, z, hex = 0x5a3a24) => g.add(part(G.box, hex, 0.13,0.22,0.03, x,0.11,z));
+function critter(g, x, z, body, head, s = 1){
+  g.add(part(G.ico1, body, 0.13*s,0.1*s,0.1*s, x,0.14*s,z)); g.add(part(G.box, head, 0.07*s,0.08*s,0.07*s, x+0.13*s,0.18*s,z));
+  for (const d of [-0.06, 0.06]) g.add(part(G.box, head, 0.025*s,0.1*s,0.025*s, x+d*s,0.05*s,z+0.03*s));
+}
+const LOOKS = {
+  dairy: {
+    house(g, u, r, b){
+      const lk = houseLook(b, r), wc = HOUSE_WALLS[lk.w % 7], rc = HOUSE_ROOFS[lk.r % 7];
+      if (lk.s === 0){          // 山小屋：深い軒・下は石・窓辺の花
+        g.add(part(G.box, 0xa8a49c, 0.54,0.16,0.5, 0,0.08,0)); g.add(part(G.box, wc, 0.54,0.22,0.5, 0,0.27,0));
+        gable(g, rc, 0,0.37,0, 0.78,0.3,0.68, true); g.add(part(G.box, 0x7a4a2a, 0.5,0.03,0.12, 0,0.27,0.3));
+        for (const x of [-0.16,0,0.16]) g.add(part(G.ico, 0xff5a7a, 0.045,0.04,0.04, x,0.31,0.34));
+        door(g, 0,0.258); win(g, 0.17,0.36,0.26);
+      } else if (lk.s === 1){          // 納屋：二段の屋根・白い×の扉
+        g.add(part(G.box, wc, 0.56,0.34,0.5, 0,0.17,0)); g.add(part(G.box, rc, 0.6,0.14,0.44, 0,0.4,0)); gable(g, rc, 0,0.46,0, 0.5,0.17,0.62);
+        g.add(part(G.box, 0xf4f0e8, 0.26,0.26,0.02, -0.07,0.13,0.255));
+        for (const a of [-0.8,0.8]){ const x = part(G.box, 0x8a3028, 0.035,0.32,0.02, -0.07,0.13,0.27); x.rotation.z = a; g.add(x); }
+        win(g, 0.19,0.25,0.26); g.add(part(G.cyl, 0xd8c060, 0.09,0.14,0.09, 0.36,0.07,0.2));
+      } else if (lk.s === 2){          // 丸太小屋
+        g.add(part(G.box, 0x4a3020, 0.46,0.36,0.44, 0,0.18,0));
+        for (let k=0;k<4;k++) for (const z of [-0.23,0.23]){ const m = part(G.cyl6, wc, 0.05,0.62,0.05, 0,0.05+k*0.095,z); m.rotation.z = Math.PI/2; g.add(m); }
+        gable(g, rc, 0,0.4,0, 0.66,0.24,0.64);
+        g.add(part(G.box, 0x9a948c, 0.1,0.3,0.1, 0.18,0.62,-0.08)); door(g, -0.08,0.285); win(g, 0.12,0.25,0.285);
+      } else {          // 石積みの塔
+        g.add(part(G.cyl, wc, 0.23,0.5,0.23, -0.06,0.25,0)); g.add(part(G.cone6, rc, 0.3,0.34,0.3, -0.06,0.67,0));
+        g.add(part(G.box, 0xa8a49c, 0.26,0.22,0.34, 0.22,0.11,0.02)); gable(g, rc, 0.22,0.22,0.02, 0.4,0.14,0.3);
+        door(g, -0.06,0.23); win(g, -0.06,0.38,0.22); win(g, 0.25,0.13,0.2);
+      }
+      u.light = [0,0.4,0.5];
+    },
+    bakery(g, u){          // 屋根に特大ソフトクリーム
+      g.add(part(G.box, 0xf4f4ee, 0.66,0.4,0.52, 0,0.2,0));
+      for (const [x,y,sc] of [[-0.22,0.3,1],[0.2,0.12,1.3],[0.02,0.36,0.8]]) g.add(part(G.box, 0x2a2a30, 0.13*sc,0.09*sc,0.02, x,y,0.262));
+      g.add(part(G.box, 0xf08ab0, 0.76,0.07,0.62, 0,0.43,0));
+      for (let k=0;k<5;k++) g.add(part(G.box, k%2?0xffffff:0x4aa0e0, 0.14,0.04,0.16, -0.28+k*0.14,0.38,0.34));
+      const c = part(G.cone6, 0xd89a50, 0.15,0.3,0.15, 0,0.6,0); c.rotation.x = Math.PI; g.add(c);
+      for (const [rr,y] of [[0.19,0.78],[0.14,0.89],[0.09,0.98]]) g.add(part(G.ico1, 0xfff8e8, rr,rr*0.62,rr, 0,y,0));
+      g.add(part(G.sph, 0xe03a4a, 0.05,0.05,0.05, 0,1.06,0));
+      win(g, -0.1,0.22,0.27); u.light = [0,0.4,0.5];
+    },
+    park(g, u){          // ふれあい牧場
+      g.add(part(G.box, 0x7cc050, 1.9,0.04,1.9, 0,0.02,0)); g.add(part(G.box, 0xc8a878, 0.3,0.045,1.0, 0,0.024,0.45));
+      for (let k=0;k<5;k++){ const a = -0.88+k*0.44; for (const [x,z] of [[a,-0.88],[-0.88,a],[0.88,a],[a,0.88]]) if (!(z > 0.8 && Math.abs(x) < 0.3)) g.add(part(G.box, 0xf4ecd8, 0.05,0.24,0.05, x,0.12,z)); }
+      g.add(part(G.box, 0xf4ecd8, 1.8,0.035,0.035, 0,0.18,-0.88));
+      for (const x of [-0.88,0.88]) g.add(part(G.box, 0xf4ecd8, 0.035,0.035,1.8, x,0.18,0));
+      for (const x of [-0.6,0.6]) g.add(part(G.box, 0xf4ecd8, 0.58,0.035,0.035, x,0.18,0.88));
+      for (const [x,z,sc] of [[-0.45,0.35,1.2],[0.4,0.1,1.1],[-0.1,-0.1,1],[0.55,0.5,0.8]]) critter(g, x,z, 0xfffaf0,0x3a3434, sc);
+      for (const [x,z,c] of [[0.2,-0.55,0xd8b890],[0.45,-0.6,0xffffff],[-0.2,0.55,0x9a7a5a]]){ g.add(part(G.ico, c, 0.07,0.07,0.07, x,0.1,z)); for (const d of [-0.025,0.025]) g.add(part(G.box, c, 0.02,0.11,0.02, x+d,0.2,z)); }
+      g.add(part(G.box, 0xc03a30, 0.4,0.3,0.36, -0.55,0.17,-0.55)); gable(g, 0xf4f0e8, -0.55,0.32,-0.55, 0.48,0.18,0.46);
+      g.add(part(G.cyl6, 0x6a4a2a, 0.05,0.4,0.05, 0.65,0.2,-0.6)); g.add(part(G.ico1, 0x4aa85a, 0.28,0.26,0.28, 0.65,0.56,-0.6));
+      g.add(part(G.box, 0, 0.07,0.08,0.07, 0.24,0.36,0.88, lampMat(0xffe0a0))); g.add(part(G.box, 0x6a4a2a, 0.04,0.34,0.04, 0.24,0.17,0.88));
+      u.light = [0,0.4,0.95];
+    },
+    bath(g, u){          // たるサウナと水風呂
+      for (const z of [-0.2,0.15]) g.add(part(G.box, 0x5a3a24, 0.5,0.1,0.06, -0.06,0.05,z));
+      const t = part(G.cyl, 0xb87840, 0.28,0.62,0.28, -0.06,0.33,-0.02); t.rotation.x = Math.PI/2; g.add(t);
+      for (const z of [-0.25,0.2]){ const h = part(G.cyl, 0x4a4038, 0.295,0.05,0.295, -0.06,0.33,z); h.rotation.x = Math.PI/2; g.add(h); }
+      door(g, -0.06,0.3); win(g, -0.06,0.36,0.31);
+      g.add(part(G.cyl, 0x55555c, 0.05,0.4,0.05, -0.06,0.7,-0.22)); u.smoke = [-0.06,0.92,-0.22];
+      g.add(part(G.cyl, 0x8a5a2e, 0.16,0.2,0.16, 0.36,0.1,0.18)); g.add(part(G.cyl, 0x9ad8f0, 0.13,0.02,0.13, 0.36,0.205,0.18));
+      for (let k=0;k<3;k++) g.add(part(G.box, 0xd8a868, 0.16,0.05,0.07, 0.36,0.03+k*0.052,-0.3));
+      u.light = [0,0.4,0.5];
+    },
+    fun(g, u, r, b){          // 牧場サーカス
+      const lv = b ? b.lvl : 1;
+      g.add(part(G.box, 0xd8c088, 1.9,0.05,1.9, 0,0.025,0));
+      for (let k=0;k<12;k++){ const a = k/12*Math.PI*2, w = part(G.box, k%2?0xffffff:0xd84038, 0.28,0.4,0.05, -0.4+Math.sin(a)*0.47,0.25,-0.36+Math.cos(a)*0.47); w.rotation.y = a; g.add(w); }
+      g.add(part(G.cone6, 0xd84038, 0.6,0.48,0.6, -0.4,0.69,-0.36)); g.add(part(G.cone6, 0xffd35a, 0.25,0.22,0.25, -0.4,0.9,-0.36));
+      g.add(part(G.box, 0x3a2420, 0.22,0.3,0.06, -0.4,0.2,0.12));
+      const ring = new THREE.Group(); ring.position.set(0,0,0.55); ring.add(part(G.cyl, 0xd84038, 0.32,0.07,0.32, 0,0.08,0)); ring.add(part(G.sph, 0x4a8ae0, 0.11,0.11,0.11, 0.12,0.22,0));
+      critter(ring, -0.12,0, 0xffffff,0x2a2a30, 1.3); g.add(ring); u.spin.push([ring, 'y', 0.6]);
+      for (let k=0;k<7;k++) g.add(part(G.sph, 0, 0.035,0.035,0.035, -0.75+k*0.25,0.42-Math.sin(k/6*Math.PI)*0.1,0.88, lampMat([0xffd35a,0xff7a9a,0x7ee0ff][k%3])));
+      if (lv >= 2){          // 空中ブランコ
+        const sw = new THREE.Group(); sw.position.set(0.5,0,-0.1);
+        sw.add(part(G.cyl, 0xf4f4f4, 0.05,0.95,0.05, 0,0.5,0)); sw.add(part(G.cone6, 0x4a8ae0, 0.42,0.2,0.42, 0,1.05,0));
+        for (let k=0;k<6;k++){ const a = k/6*Math.PI*2, x = Math.cos(a), z = Math.sin(a); strut(sw, 0xdddddd, x*0.34,0.98,z*0.34, x*0.48,0.46,z*0.48, 0.015); sw.add(part(G.box, [0xff5a5a,0xffd35a,0x7ee0ff][k%3], 0.1,0.07,0.1, x*0.48,0.43,z*0.48)); }
+        g.add(sw); u.spin.push([sw, 'y', 1.3]);
+      }
+      if (lv >= 3){          // 牛の気球
+        g.add(part(G.cyl, 0xf4f4f4, 0.012,0.9,0.012, 0.65,0.45,0.68));
+        g.add(part(G.sph, 0xffffff, 0.3,0.26,0.26, 0.65,1.12,0.68)); g.add(part(G.sph, 0x2a2a30, 0.12,0.12,0.06, 0.6,1.2,0.91));
+        g.add(part(G.sph, 0xf0a0b0, 0.15,0.11,0.09, 0.7,1.03,0.91));
+        for (const x of [0.48,0.82]) g.add(part(G.cone4, 0xf0c848, 0.05,0.14,0.05, x,1.4,0.68));
+      }
+      u.light = [0,0.5,0.95];
+    },
+  },
+  farm: {
+    house(g, u, r, b){
+      const lk = houseLook(b, r), wc = HOUSE_WALLS[lk.w % 7], rc = HOUSE_ROOFS[lk.r % 7];
+      if (lk.s === 0){          // かやぶき
+        g.add(part(G.box, wc, 0.54,0.28,0.46, 0,0.14,0));
+        for (const x of [-0.25,0,0.25]) g.add(part(G.box, 0x5a3a24, 0.04,0.28,0.02, x,0.14,0.24));
+        gable(g, 0xc09a58, 0,0.27,0, 0.68,0.42,0.6); g.add(part(G.box, rc, 0.64,0.06,0.09, 0,0.68,0));
+      } else if (lk.s === 1){          // 瓦屋根：寄棟に大棟
+        g.add(part(G.box, wc, 0.54,0.3,0.46, 0,0.15,0)); roof(g, 0.66,0.16,0.3, rc); gable(g, rc, 0,0.38,0, 0.4,0.17,0.46);
+        g.add(part(G.box, 0xe8e0c8, 0.5,0.03,0.05, 0,0.56,0));
+      } else if (lk.s === 2){          // 蔵：なまこ壁
+        g.add(part(G.box, 0xf4f2ea, 0.44,0.52,0.44, 0,0.26,0)); g.add(part(G.box, 0x3a3e48, 0.46,0.18,0.46, 0,0.09,0));
+        for (let k=0;k<3;k++) g.add(part(G.box, wc, 0.07,0.07,0.02, -0.15+k*0.15,0.1,0.235));
+        gable(g, rc, 0,0.52,0, 0.58,0.2,0.54, true); win(g, 0,0.4,0.225);
+      } else {          // 町家：二階・格子・のれん
+        g.add(part(G.box, wc, 0.58,0.24,0.46, 0,0.12,0)); g.add(part(G.box, rc, 0.64,0.04,0.58, 0,0.26,0.02));
+        g.add(part(G.box, wc, 0.5,0.18,0.38, 0,0.36,-0.02)); gable(g, rc, 0,0.45,-0.02, 0.5,0.17,0.6);
+        for (let k=0;k<6;k++) g.add(part(G.box, 0x4a3020, 0.025,0.16,0.02, -0.24+k*0.06,0.12,0.24));
+        g.add(part(G.box, 0x2a4a8a, 0.2,0.09,0.02, 0.17,0.19,0.245)); win(g, 0,0.37,0.18);
+      }
+      if (lk.s < 2) win(g, 0.15,0.17,0.24);
+      if (lk.s !== 3) door(g, lk.s === 2 ? 0 : -0.1, 0.25);
+      u.light = [0,0.4,0.5];
+    },
+    bakery(g, u){          // 屋根に特大の寿司
+      g.add(part(G.box, 0xd8b888, 0.68,0.36,0.52, 0,0.18,0)); g.add(part(G.box, 0x3a4250, 0.8,0.07,0.64, 0,0.4,0));
+      for (let k=0;k<4;k++) g.add(part(G.box, 0x2a4a8a, 0.13,0.14,0.02, -0.21+k*0.14,0.28,0.275));
+      g.add(part(G.box, 0x7a5030, 0.58,0.05,0.26, 0,0.46,0));
+      for (const [x,c] of [[-0.14,0xf07a50],[0.14,0xc83040]]){
+        g.add(part(G.ico1, 0xfffcf0, 0.14,0.1,0.14, x,0.56,0)); g.add(part(G.box, c, 0.2,0.07,0.3, x,0.65,0));
+        for (const z of [-0.08,0.04]) g.add(part(G.box, 0xffd8c8, 0.205,0.072,0.025, x,0.65,z));
+      }
+      g.add(part(G.sph, 0, 0.07,0.1,0.07, 0.38,0.27,0.3, lampMat(0xff6a4a)));
+      win(g, 0.22,0.14,0.27); u.light = [0,0.4,0.5];
+    },
+    park(g, u){          // 日本庭園
+      g.add(part(G.box, 0xd8d0b8, 1.9,0.04,1.9, 0,0.02,0));
+      for (let k=0;k<4;k++) g.add(part(G.box, 0xc0b8a0, 0.7,0.045,0.03, -0.5,0.024,0.4+k*0.13));
+      g.add(part(G.cyl, 0x7a8a6a, 0.64,0.04,0.46, 0.2,0.04,0)); g.add(part(G.cyl, 0x5ab0d8, 0.57,0.02,0.4, 0.2,0.065,0));
+      for (const [x,z,c] of [[0,0.15,0xff6a3a],[0.45,-0.15,0xffffff],[0.5,0.15,0xff6a3a]]) g.add(part(G.box, c, 0.11,0.012,0.05, x,0.082,z));
+      for (let k=0;k<7;k++){ const z = -0.45+k*0.15, h = 0.12+Math.sin(k/6*Math.PI)*0.18; g.add(part(G.box, 0xd84030, 0.22,0.035,0.16, 0.2,h,z)); for (const x of [0.1,0.3]) g.add(part(G.box, 0xa02820, 0.025,0.14,0.025, x,h+0.07,z)); }
+      for (const [x,z,sc] of [[-0.6,-0.55,1.2],[0.72,-0.62,0.8]]){ g.add(part(G.cyl6, 0x5a3a2a, 0.06*sc,0.44*sc,0.06*sc, x,0.22*sc,z)); for (const [a,h,c] of [[0,0.6,0xffb8d0],[-0.18,0.5,0xffd0e0],[0.18,0.52,0xf89ab8]]) g.add(part(G.ico1, c, 0.24*sc,0.18*sc,0.22*sc, x+a*sc,h*sc,z)); }
+      for (const [x,z] of [[0.75,0.65],[-0.55,0.1]]){ g.add(part(G.cyl6, 0x9a9a92, 0.04,0.24,0.04, x,0.14,z)); g.add(part(G.box, 0, 0.11,0.1,0.11, x,0.3,z, lampMat(0xffe0a0))); g.add(part(G.cone4, 0x8a8a82, 0.15,0.1,0.15, x,0.4,z)); }
+      u.light = [0.1,0.4,0.95];
+    },
+    bath(g, u){          // 露天風呂
+      g.add(part(G.box, 0xa87848, 0.78,0.3,0.24, 0,0.15,-0.3)); gable(g, 0x3a4250, 0,0.3,-0.3, 0.38,0.16,0.86);
+      g.add(part(G.box, 0x2a3a8a, 0.22,0.13,0.02, 0,0.2,-0.17));
+      g.add(part(G.cyl, 0x9ad8e8, 0.3,0.07,0.24, 0,0.045,0.14));
+      for (let k=0;k<11;k++){ const a = k/11*Math.PI*2, q = 0.06+(k%3)*0.02; g.add(part(G.dod, k%2?0x8a8a82:0x6a6a66, q,q,q, Math.cos(a)*0.34,0.05,0.14+Math.sin(a)*0.27)); }
+      for (const [x,z] of [[-0.1,0.12],[0.12,0.18]]){ g.add(part(G.sph, 0xf0c090, 0.06,0.06,0.06, x,0.12,z)); g.add(part(G.box, 0xffffff, 0.07,0.03,0.07, x,0.18,z)); }
+      for (let k=0;k<5;k++) g.add(part(G.cyl6, 0x9ab85a, 0.035,0.3+(k%2)*0.07,0.035, 0.43,0.16,-0.14+k*0.11));
+      u.smoke = [0,0.25,0.14]; u.light = [0,0.4,0.5];
+    },
+    fun(g, u, r, b){          // 縁日と花火
+      const lv = b ? b.lvl : 1;
+      g.add(part(G.box, 0xd0b890, 1.9,0.05,1.9, 0,0.025,0));
+      for (const x of [-0.2,0.2]) for (const z of [-0.2,0.2]) g.add(part(G.box, 0xd84030, 0.05,0.62,0.05, x,0.34,z));
+      g.add(part(G.box, 0xf4e8d0, 0.5,0.05,0.5, 0,0.38,0)); roof(g, 0.62,0.2,0.64, 0x3a4250);
+      g.add(part(G.cyl, 0xc04030, 0.1,0.14,0.1, 0,0.48,0));
+      for (const [x0,z0] of [[-0.85,-0.85],[0.85,-0.85],[-0.85,0.85],[0.85,0.85]]) for (let k=1;k<5;k++){ const t = k/5; g.add(part(G.sph, 0, 0.045,0.06,0.045, x0*t,0.66-t*0.22,z0*t, lampMat(k%2?0xff5a4a:0xffe0a0))); }
+      for (const [x,z,c] of [[-0.68,0.2,0x4a8ae0],[0.68,0.2,0xf0c040],[-0.62,0.65,0xe05a5a],[0.62,0.65,0x5ab070]]){
+        g.add(part(G.box, 0xc89868, 0.3,0.2,0.26, x,0.15,z)); for (let k=0;k<3;k++) g.add(part(G.box, k%2?0xffffff:c, 0.11,0.04,0.32, x-0.11+k*0.11,0.29,z)); }
+      if (lv >= 2){          // 鳥居
+        for (const x of [-0.27,0.27]) g.add(part(G.cyl, 0xd84030, 0.045,0.7,0.045, x,0.37,0.86));
+        g.add(part(G.box, 0xd84030, 0.64,0.06,0.07, 0,0.6,0.86)); g.add(part(G.box, 0x3a2a2a, 0.8,0.07,0.1, 0,0.73,0.86));
+      }
+      if (lv >= 3){          // 五重塔と花火
+        for (let k=0;k<5;k++){ const w = 0.36-k*0.045; g.add(part(G.box, 0xd84030, w*0.6,0.17,w*0.6, 0,0.14+k*0.24,-0.66)); const t = part(G.cone4, 0x3a4250, w,0.11,w, 0,0.27+k*0.24,-0.66); t.rotation.y = Math.PI/4; g.add(t); }
+        g.add(part(G.cyl, 0xf0c848, 0.015,0.25,0.015, 0,1.38,-0.66));
+        for (const [x,y,c] of [[-0.6,1.2,0xff7ab0],[0.62,1.4,0x7ee0ff]]){ const f = new THREE.Group(); f.position.set(x,y,-0.5);
+          for (let k=0;k<12;k++){ const a = k/12*Math.PI*2; f.add(part(G.sph, 0, 0.035,0.035,0.035, Math.cos(a)*(k%2?0.3:0.18),Math.sin(a)*(k%2?0.3:0.18),0, lampMat(k%2?c:0xffe08a))); }
+          g.add(f); u.spin.push([f, 'z', 0.8]); }
+      }
+      u.light = [0,0.5,0.95];
+    },
+  },
+};
 function makeBuilding(type, r=0.5, b=null){
   const g = new THREE.Group(); const u = g.userData; u.spin = []; u.smoke = null; u.light = null;
-  switch(type){
+  const alt = LOOKS[ISLAND]?.[type];          // 島ごとの見た目
+  switch(alt ? '_alt' : type){
+    case '_alt': alt(g, u, r, b); break;
     case 'warehouse':
       g.add(part(G.box, 0xb08860, 0.9,0.5,0.75, 0,0.25,0)); roof(g, 0.98, 0.34, 0.5, 0x4a6aa8);
       g.add(part(G.box, 0x5a3a20, 0.3,0.32,0.03, 0,0.16,-0.38));
@@ -1300,7 +1517,7 @@ function moodBreakdown(){
   if (S.flags.steam) Lst.push([L('工場の煙','Factory smoke'), -8]);
   const np = noisePairs(); if (np) Lst.push([L('工場の騒音','Factory noise')+'('+np+')', -Math.min(20, 3*np)]);
   const hl = Math.max(0, pop() - housing()); if (hl) Lst.push([L('家なし','Homeless')+'('+hl+')', -6*hl]);
-  if (S.nightShift && isNight() && workerCount()) Lst.push([L('夜勤中','Night shift')+(countB('bath') ? L('（浴場で半分）',' (bath: half)') : ''), countB('bath') ? -6 : -12]);
+  if (S.nightShift && isNight() && workerCount()) Lst.push([L('夜勤中','Night shift')+(countB('bath') ? L('（'+BUILD.bath.n[0]+'で半分）',' (halved by '+BUILD.bath.n[1]+')') : ''), countB('bath') ? -6 : -12]);
   return Lst;
 }
 const moodTarget = () => clamp(moodBreakdown().reduce((a,[,v])=>a+v, 0), 0, 100);
@@ -1355,7 +1572,7 @@ function place(type, i){
   setCellMesh(i); CM[i].userData.pop = 0.35; sfx('build'); shake(0.06);
   burst(bCenter(i).x, 0.3, bCenter(i).z, 'stone', 6);
   assignLights();
-  if (type === 'fun' && countB('fun') === 1) eventQueue.push({result:true, img:'skyfair', title:L('空の遊園地、開園！','The Sky Fair opens!'), text:L('回転木馬がまわりはじめた。飛行船の観光客たちが、さっそく列をつくっている。レベルを上げると乗り物が増える。','The carousel starts to turn, and airship tourists are already lining up. Level it up for more rides.')});
+  if (type === 'fun') S.funPending = !S.funOpened;
   return true;
 }
 function moveWhy(from, to){
@@ -2496,7 +2713,11 @@ function sim(dt){
   const canWork = workTime() && !festActive();
   for (let i=0;i<W*W;i++){
     const c = S.cells[i]; if (c.t !== 'b') continue; const b = c.b, d = BUILD[b.type]; b._working = false;
-    if (b.build > 0){ b.build = Math.max(0, b.build - dt); if (!b.build){ if (CM[i]) CM[i].userData.pop = 0.3; sfx('hire'); } continue; }
+    if (b.build > 0){ b.build = Math.max(0, b.build - dt); if (!b.build){ if (CM[i]) CM[i].userData.pop = 0.3; sfx('hire');
+      if (b.type === 'fun' && S.funPending){          // 絵は完成してから
+        S.funPending = false; S.funOpened = 1;
+        setTimeout(() => eventQueue.push({result:true, img:ISLAND === 'sky' ? 'skyfair' : '@shot', title:L(BUILD.fun.n[0]+'、開園！', 'Now open: '+BUILD.fun.n[1]), text:N(FLV.open)}), 900);
+      } } continue; }
     // 満杯が長く続いたときだけ注意を出す（運搬が一時的に追いつかないだけなら出さない）
     if (staffed(d)) b._fullT = stTotal(b) >= stCap(b) ? (b._fullT || 0) + dt : 0;
     if (d.gen){
@@ -2785,7 +3006,7 @@ const EVENTS = [
   {id:'nightorder', w:1.5, cond:()=>!S.nightShift && !S.nightOrder && S.day >= 4 && allB().some(i=>BUILD[S.cells[i].b.type]?.in && S.cells[i].b.workers), make:()=>({img:'nightorder', title:L('夜明けの特急便','The dawn express'), text:L('商人が「明日の朝いちばんの気球に、夜のうちに作った品を積みたい。いつもの1.45倍で買うよ」と言っている。','A merchant says: "Load what you craft tonight on tomorrow’s first balloon. I’ll pay 1.45× the usual."'), opts:[
     {l:L('今夜は夜勤！','Night shift tonight!'), d:L('今夜だけ夜勤ON。夜のあいだに作った加工品の値段の45%がボーナスで入る（品物は手元に残る）','Night shift ON just for tonight. Bonus: 45% of the value of goods crafted overnight (you keep the goods)'), f:()=>{
       S.nightOrder = {day:S.day, prev:S.nightShift, snap:null}; S.nightShift = true; story('夜明けの特急便に挑んだ','Took on the dawn express');
-      return {img:'nightorder', title:L('今夜は夜なべ','Working through the night'), text:L('ランタンを灯して、夜通し機械を回す。浴場があると疲れが軽くなる。','Lanterns lit, the machines will run all night. A bathhouse eases the fatigue.')}; }},
+      return {img:'nightorder', title:L('今夜は夜なべ','Working through the night'), text:L('ランタンを灯して、夜通し働く。'+BUILD.bath.n[0]+'があると疲れが軽くなる。','Lanterns lit, the work goes on all night. Build a '+BUILD.bath.n[1]+' to ease the fatigue.')}; }},
     {l:L('夜はしっかり休む','Rest at night'), d:L('幸福 +2','Happiness +2'), f:()=>{ addMood(2); }},
   ]})},
   {id:'bigvein', w:3, isl:'sky', cond:()=>S.flags.mine && S.res.ore < S.resTotal*0.5 && !S.doneEvents.bigvein, make:()=>{
@@ -2815,7 +3036,12 @@ function queueEvent(){
   S.lastEvent = ev.id; queuedIds[ev.id] = true;
   const E = ev.make(); E.id = ev.id; eventQueue.push(E);
 }
-const evImg = n => n ? '<img class="evimg" src="assets/ev/'+n+'.jpg" alt="">' : '';
+const evImg = n => {          // @shot＝いまの島の写真（gfix が壊さないよう、src は後から入れる）
+  if (!n) return '';
+  if (n !== '@shot') return '<img class="evimg" src="assets/ev/'+n+'.jpg" alt="">';
+  queueMicrotask(() => { const im = document.querySelector('img[data-shot]'); if (im) im.src = snapIsland(640, 360).toDataURL('image/jpeg', 0.85); });
+  return '<img class="evimg" data-shot alt="">';
+};
 let curEvent = null;
 function showEvent(E){
   const box = $('#modal .mbox');
@@ -2919,7 +3145,7 @@ function showEnding(){
     N(ITEMS[ISL.hi].n)+' '+st.made[ISL.hi]+'・'+N(ITEMS[ISL.top].n)+' '+st.made[ISL.top]+'／'+L('注文 達成','Orders done')+' '+st.contractsDone+'・'+L('失敗','failed')+' '+st.contractsFail+'／'+L('祭り','Festivals')+' '+st.festivals+'・'+L('夜勤','Night shifts')+' '+st.nightShifts+'</div>' +
     '<h4 style="color:var(--hi);font-weight:normal;margin:10px 0 4px">'+L('島の歩み','Your story')+'</h4><div class="kv">' + (S.story.length ? S.story.slice(-10).map(s=>'Day'+s.d+'：'+N(s.t)).join('<br>') : L('（大きな決断はしなかった）','(No big decisions)')) + '</div>' +
     '<p class="kv" style="color:var(--sub)">'+(next ? L('飛行船の船長「次は<b>'+islName(next)[0]+'</b>へ案内しよう。この島はこのまま残しておくから安心してくれ」','Captain: "Next I’ll take you to the <b>'+islName(next)[1]+'</b>. This island will stay just as you leave it."') : L('飛行船の船長「3つの島を渡りきったな。みごとだ」','Captain: "You have crossed all three islands. Magnificent."'))+'</p>' +
-    '<p class="kv">'+L('このあとは：<b>飛行船の改装</b>（新エリア）と<b>『空の遊園地』</b>（建設→暮らし）で観光客を呼べる。','What’s next: <b>refit the airship</b> (New Areas) and build a <b>Sky Fair</b> (Build → Living) to draw tourists.')+'</p>' +
+    '<p class="kv">'+L('このあとは：<b>飛行船の改装</b>（新エリア）と<b>『'+BUILD.fun.n[0]+'』</b>（建設→暮らし）で観光客を呼べる。','What’s next: <b>refit the airship</b> (New Areas) and build a <b>'+BUILD.fun.n[1]+'</b> (Build → Living) to draw tourists.')+'</p>' +
     '<div class="opts"><button class="opt" data-act="closeModal"><div class="n">▶ '+L('このまま島を育てる','Keep building this island')+'</div></button>' +
     (next ? '<button class="opt" data-act="travelMenu:'+next+'"><div class="n">▶ '+L(islName(next)[0]+'へ渡る','Travel to the '+islName(next)[1])+'</div><div class="d">'+L('新エリアからいつでも渡れる','Also available any time from New Areas')+'</div></button>' : '') +
     '<button class="opt" data-act="score"><div class="n">▶ '+L('スコアを見る','See the score')+'</div><div class="d">'+L('島ごと・3島の総合・Xへのポスト','Each island, all three, post on X')+'</div></button>' +
@@ -3603,8 +3829,8 @@ function renderPanel(){
     const xb = Object.keys(EXPAND_DIRS).map(k=>'<button class="btn" data-act="expand:'+k+'" '+(canExpand(k) && S.gold >= expandCost() ? '' : 'disabled')+'>'+N(EXPAND_DIRS[k][0])+'</button>').join('');
     h = head(L('新エリア','New Areas')) + (S.airport ?
       '<p>'+L('空港は開港している。島の称号：','The airport is open. Title: ')+'<b style="color:var(--hi)">『'+N(r.main[0])+'』</b></p><div class="btns"><button class="btn" data-act="ending">'+L('称号を見る','See title')+'</button></div>' +
-      '<h4 style="color:var(--hi);font-weight:normal;margin:10px 0 4px">'+L('飛行船を改装する','Refit the airship')+' Lv'+S.airLvl+'/'+AIR_COST.length+'</h4>' +
-      '<div class="kv">'+L('大きく豪華になるほど、毎朝たくさんの観光客を連れてくる。『空の遊園地』（暮らし）があると、観光客はもっと増えてお金を落とす。','A bigger, grander airship brings more tourists each morning. A Sky Fair (Living) draws even more, and they spend more.')+'<br>'+L('これまでの観光客 ','Tourists so far ')+fmt(S.stats.tourists || 0)+L('人','')+'</div>' +
+      '<h4 style="color:var(--hi);font-weight:normal;margin:10px 0 4px">'+L('飛行船','Airship')+'『'+N(FLV.air[S.airLvl])+'』 Lv'+S.airLvl+'/'+AIR_COST.length+(S.airLvl < AIR_COST.length ? ' → 『'+N(FLV.air[S.airLvl+1])+'』' : '')+'</h4>' +
+      '<div class="kv">'+N(FLV.perk)+(ISLAND === 'sky' ? '' : L('（いま ×',' (now ×')+tourMul().toFixed(2)+L('）',')'))+'<br>'+L('『'+BUILD.fun.n[0]+'』（暮らし）があると、さらに増える。','A '+BUILD.fun.n[1]+' (Living) draws even more.')+'<br>'+L('これまでの観光客 ','Tourists so far ')+fmt(S.stats.tourists || 0)+L('人','')+'</div>' +
       (S.airLvl < AIR_COST.length ? '<div class="btns"><button class="btn hot" data-act="airup" '+(S.gold >= AIR_COST[S.airLvl] ? '' : 'disabled')+'>'+L('改装する','Refit')+' '+fmt(AIR_COST[S.airLvl])+'G</button></div>' : '<div class="kv g">'+L('これ以上ない豪華な飛行船だ！','The grandest airship in the skies!')+'</div>')
       : '<p>'+L('空港を開いて飛行船を呼ぶと、島の歩みに応じた<b>称号</b>が決まる。','Open an airport and call an airship to earn your island’s <b>title</b>.')+'</p><div class="kv">'+L('費用','Cost')+'：<b style="color:var(--hi)">'+fmt(P.goal)+'G</b>（'+L('いま','now')+' '+fmt(S.gold)+'G）<br>'+L('今の雰囲気','Current mood')+'：『'+N(r.main[0])+'』</div>' +
         '<div class="btns"><button class="btn hot" data-act="airport" '+(S.gold >= P.goal ? '' : 'disabled')+'>'+L('空港を開く','Open airport')+'（'+fmt(P.goal)+'G）</button></div>') +
@@ -3757,7 +3983,7 @@ function doAct(actStr, el){
     case 'drive': setDrive(+arg); break;
     case 'expand': expandIsland(arg); break;
     case 'airup': if (S.airport && S.airLvl < AIR_COST.length && S.gold >= AIR_COST[S.airLvl]){ S.gold -= AIR_COST[S.airLvl]; S.airLvl++; buildAirship(true); sfx('fanfare'); burst(airship.pad.x, 1.2, airship.pad.z, 'coin', 12);
-      eventQueue.push({result:true, img:'airship_up', title:L('飛行船、改装完了！','The airship is refitted!'), text:L('Lv'+S.airLvl+'の飛行船になった。明日の朝から、もっと多くの観光客がやってくる。','Now a Lv'+S.airLvl+' airship. More tourists will come from tomorrow morning.')}); } break;
+      eventQueue.push({result:true, img:ISLAND === 'sky' ? 'airship_up' : '@shot', title:L('飛行船、改装完了！','The airship is refitted!'), text:L('『'+FLV.air[S.airLvl][0]+'』に生まれ変わった。明日の朝から、もっと多くの観光客がやってくる。','It is now “'+FLV.air[S.airLvl][1]+'”. More tourists will come from tomorrow morning.')}); } break;
     case 'ending': showEnding(); break;
     case 'confirmReset': confirmResetModal(); return;
     case 'restoreMenu': showRestore(); return;
@@ -3871,7 +4097,7 @@ function updateBadges(){
     const show = b.build > 0 || (mode2 === 'on') || (mode2 === 'warn' && warn);
     if (!show){ if (el) el.style.display = 'none'; continue; }
     if (!el){ el = badgeEls[i] = document.createElement('div'); el.className = 'badge'; box.appendChild(el); }
-    const icon = b.build > 0 ? '🏗️' : ICONS[b.type];
+    const icon = b.build > 0 ? '🏗️' : (FLV.icon[b.type] || ICONS[b.type]);
     if (el.dataset.t !== icon){ el.dataset.t = icon; el.textContent = icon; el.classList.toggle('small', b.type === 'house'); }
     el.classList.toggle('warn', !!warn && b.build <= 0); el.classList.toggle('build', b.build > 0);
     const p = bCenter(i), [sx, sy] = toScreen(p.x, b.type === 'house' ? 0.9 : bSize(i) > 1 ? 1.7 : 1.15, p.z);
@@ -3909,6 +4135,8 @@ function markerTarget(){
 
 /* ---- 島を広げる */
 const AIR_COST = [6000, 15000, 40000];
+// 観光の個性：酪農=牛の数／農耕=季節
+const tourMul = () => isDairy ? 1 + Math.min(16, S.herd?.length || 0)*0.03 : isFarm ? [1, 1.1, 1.7, 0.8][season()] : 1;
 const EXPAND_DIRS = {n:[['北（奥）へ','North'], 'z0', -1], s:[['南（手前）へ','South'], 'z1', 1], w:[['西へ','West'], 'x0', -1], e:[['東へ','East'], 'x1', 1]};
 const expandCost = () => Math.round(1500 * Math.pow(2, S.expand));
 function canExpand(dir){ const [, k, d] = EXPAND_DIRS[dir], v = S.land[k] + d; return v >= 0 && v <= W-1; }
@@ -3935,23 +4163,26 @@ function buildAirship(docked){
   if (airship){ scene.remove(airship.g); airship = null; }
   const lv = S.airLvl || 0, e = dockEdge();
   const a = new THREE.Group(), props = [];
-  const ENV = [0xe8d8b0, 0xf4ecd8, 0xf6f0e4, 0x3a4ab0][lv], TRIM = [0xc84a3a, 0xe8b840, 0xd84a4a, 0xf0c848][lv], GOLD = 0xe8b840;
+  const sky = ISLAND === 'sky', GOLD = 0xe8b840;
+  const ENV = {sky:[0xe8d8b0, 0xf4ecd8, 0xf6f0e4, 0x3a4ab0], dairy:[0xf4f2ea, 0xfaf8f0, 0xfff8f4, 0xfff0d0], farm:[0xe8d8b0, 0x3a5a8a, 0x2f7a70, 0xc83a30]}[ISLAND][lv];
+  const TRIM = {sky:[0xc84a3a, 0xe8b840, 0xd84a4a, 0xf0c848], dairy:[0x2a2a30, 0xf08ab0, 0x4aa0e0, 0xf0c848], farm:[0xd84030, 0xd84030, 0xf4e8c8, 0xf0c848]}[ISLAND][lv];
   const LX = 1.5 + lv*0.12, R = 0.55 + lv*0.04;
   const bal = new THREE.Mesh(G.sph, MT(ENV)); bal.scale.set(LX, R, R); bal.castShadow = true; a.add(bal);
   const rAt = x => R * Math.sqrt(Math.max(0, 1 - (x/LX)**2)) + 0.012;
   const ring = (x, hex, w=0.06) => { const r = rAt(x) + 0.01, m = part(G.torus, hex, r, r, r * (w > 0.08 ? 1.6 : 1), x, 0, 0); m.rotation.y = Math.PI/2; a.add(m); };
-  if (lv === 0){ for (const z of [-1, 1]) a.add(part(G.box, TRIM, 2.2,0.04,0.02, 0,0.1, z*0.52)); }
+  if (!sky){ if (isFarm && lv >= 1) for (const x of [-0.8, 0.8]) ring(x, TRIM, lv >= 2 ? 0.12 : 0.05); }
+  else if (lv === 0){ for (const z of [-1, 1]) a.add(part(G.box, TRIM, 2.2,0.04,0.02, 0,0.1, z*0.52)); }
   else { const xs = lv >= 2 ? [-1.1,-0.7,-0.3,0.1,0.5,0.9] : [-0.9, 0, 0.9]; xs.forEach((x,k)=>ring(x, lv === 2 ? (k%2 ? 0xd84a4a : 0x4a6ab0) : TRIM, lv >= 2 ? 0.12 : 0.05)); }
-  if (lv >= 1){ const nose = part(G.sph, GOLD, 0.12,0.12,0.12, LX-0.02,0,0); a.add(nose); }
+  if (sky && lv >= 1){ const nose = part(G.sph, GOLD, 0.12,0.12,0.12, LX-0.02,0,0); a.add(nose); }
   // 尾翼
-  const fin = lv >= 3 ? 0xf0c848 : 0xc84a3a, fs = 1 + lv*0.15;
+  const fin = lv >= 3 ? 0xf0c848 : sky ? 0xc84a3a : isFarm ? 0x3a4250 : 0x2a2a30, fs = 1 + lv*0.15;
   a.add(part(G.box, fin, 0.45*fs,0.55*fs,0.04, -LX+0.1,0,0)); a.add(part(G.box, fin, 0.45*fs,0.04,0.55*fs, -LX+0.1,0,0));
   if (lv >= 3) for (const z of [-1,1]) a.add(part(G.box, GOLD, 0.5,0.03,0.02, -LX+0.1, 0, z*0.28*fs));
   // ゴンドラ
   const gw = 0.7 + lv*0.25, gy = -R - 0.18;
   a.add(part(G.box, lv >= 3 ? 0xf4ecd8 : 0x8a5a2e, gw,0.22,0.3, 0,gy,0)); a.add(part(G.box, 0, gw-0.2,0.08,0.31, 0,gy+0.04,0, winMat));
   for (const x of [-gw/2+0.05, gw/2-0.05]) a.add(part(G.box, 0x5a4a3a, 0.02,0.2,0.02, x,gy+0.2,0));
-  if (lv >= 2){ // 2階のゴンドラと手すり
+  if (sky && lv >= 2){ // 2階のゴンドラと手すり
     a.add(part(G.box, lv >= 3 ? 0xf4ecd8 : 0x9a6a3a, gw*0.8,0.18,0.28, 0,gy-0.21,0)); a.add(part(G.box, 0, gw*0.8-0.16,0.07,0.29, 0,gy-0.2,0, winMat));
     a.add(part(G.box, GOLD, gw+0.1,0.02,0.36, 0,gy-0.12,0));
     for (let k=0;k<7;k++) a.add(part(G.box, GOLD, 0.015,0.08,0.015, -gw/2 + k*gw/6, gy-0.08, 0.18));
@@ -3961,17 +4192,45 @@ function buildAirship(docked){
   props.push(part(G.box, 0x444444, 0.04,0.5,0.06, gw/2+0.08,gy,0));
   if (lv >= 1) for (const z of (lv >= 3 ? [-0.62,-0.42,0.42,0.62] : [-0.45, 0.45])){ const en = part(G.cyl, lv >= 3 ? GOLD : 0x6a6a72, 0.08,0.3,0.08, -0.3,gy+0.25,z); en.rotation.z = Math.PI/2; a.add(en); const pr = part(G.box, 0x444444, 0.03,0.32,0.05, -0.12,gy+0.25,z); props.push(pr); }
   // 旗・ちょうちん・飾り
-  if (lv >= 1){ // 気嚢の下に張った旗の列
+  if (sky && lv >= 1){ // 気嚢の下に張った旗の列
     const n = 6 + lv*2, x0 = LX*0.7, x1 = -LX*0.7, yy = x => -rAt(x) - 0.04;
     for (let k=0;k<n;k++){ const x = x0 + (x1-x0)*k/(n-1); const fl = part(G.cone4, [0xff5a5a,0xffd35a,0x7ee0ff,0x9aff7a,0xff9af0][k%5], 0.05,0.1,0.012, x, yy(x) - 0.06, 0); fl.rotation.x = Math.PI; a.add(fl); } }
-  if (lv >= 2) for (let k=0;k<9;k++){ const x = -gw/2 - 0.3 + k*(gw+0.6)/8; a.add(part(G.sph, 0, 0.035,0.045,0.035, x, gy+0.13 + Math.sin(k/8*Math.PI)*-0.05, -0.2, lampMat([0xffd35a,0xff7a5a,0x7ee0ff][k%3]))); }
-  if (lv >= 2){ a.add(part(G.cyl, 0xdddddd, 0.015,0.55,0.015, -LX*0.6,R+0.2,0)); a.add(part(G.box, TRIM, 0.28,0.15,0.01, -LX*0.6+0.15,R+0.38,0)); }
-  if (lv >= 3){ // 王冠の飾りと金の紋章
+  if (sky && lv >= 2) for (let k=0;k<9;k++){ const x = -gw/2 - 0.3 + k*(gw+0.6)/8; a.add(part(G.sph, 0, 0.035,0.045,0.035, x, gy+0.13 + Math.sin(k/8*Math.PI)*-0.05, -0.2, lampMat([0xffd35a,0xff7a5a,0x7ee0ff][k%3]))); }
+  if (sky && lv >= 2){ a.add(part(G.cyl, 0xdddddd, 0.015,0.55,0.015, -LX*0.6,R+0.2,0)); a.add(part(G.box, TRIM, 0.28,0.15,0.01, -LX*0.6+0.15,R+0.38,0)); }
+  if (sky && lv >= 3){ // 王冠の飾りと金の紋章
     a.add(part(G.cyl, GOLD, 0.16,0.08,0.16, 0.2,R+0.02,0));
     for (let k=0;k<5;k++){ const an = k/5*Math.PI*2; a.add(part(G.cone4, GOLD, 0.03,0.12,0.03, 0.2+Math.cos(an)*0.13, R+0.1, Math.sin(an)*0.13)); }
     a.add(part(G.sph, 0xd84a6a, 0.05,0.05,0.05, 0.2,R+0.1,0));
     for (const z of [-1,1]){ const em = part(G.torus, GOLD, 0.14,0.14,0.2, 0.4,0,z*(rAt(0.4)+0.005)); a.add(em); a.add(part(G.sph, 0xd84a6a, 0.05,0.05,0.03, 0.4,0,z*(rAt(0.4)+0.01))); }
     a.add(part(G.cyl, 0xdddddd, 0.015,0.55,0.015, LX*0.5,R+0.2,0)); a.add(part(G.box, 0xffffff, 0.26,0.14,0.01, LX*0.5+0.14,R+0.38,0));
+  }
+  if (isDairy){          // 牛の顔・角・鈴・ミルク缶
+    for (const [x,y,w] of [[-0.8,0.1,0.28],[-0.1,-0.16,0.22],[0.35,0.26,0.17],[-0.35,0.3,0.14]]) for (const z of [-1,1]) a.add(part(G.sph, 0x2a2a30, w,w*0.7,0.06, x,y,z*Math.max(0.05, Math.sqrt(Math.max(0, rAt(x)**2 - y*y)) - 0.02)));
+    a.add(part(G.sph, 0xf0a0b0, 0.2,0.24,0.3, LX-0.1,-0.08,0));
+    for (const z of [-1,1]){
+      a.add(part(G.sph, 0x5a3040, 0.04,0.05,0.04, LX+0.08,-0.06,z*0.12)); a.add(part(G.sph, 0x2a2a30, 0.05,0.07,0.05, LX-0.22,0.2,z*0.2));
+      a.add(part(G.box, 0x2a2a30, 0.06,0.12,0.22, LX-0.5,0.26,z*0.42));
+      if (lv >= 1) a.add(part(G.cone4, lv >= 3 ? GOLD : 0xe8dcc0, 0.08,0.26+lv*0.04,0.08, LX-0.5,R-0.02,z*0.22));
+    }
+    if (lv >= 1){ a.add(part(G.box, 0xd84030, 0.07,0.1,0.5, LX-0.45,-0.3,0)); a.add(part(G.cone4, GOLD, 0.16,0.24,0.16, LX-0.45,-0.5,0)); }
+    if (lv >= 2){
+      for (let k=0;k<4;k++){ const x = -gw/2+0.12+k*(gw-0.24)/3; a.add(part(G.cyl, 0xd8e0e8, 0.1,0.24,0.1, x,gy-0.22,0)); a.add(part(G.cyl, 0x8a98a8, 0.06,0.09,0.06, x,gy-0.07,0.17)); }
+      for (let k=0;k<9;k++) a.add(part(G.sph, 0, 0.045,0.045,0.045, -gw/2+k*gw/8,gy+0.14,0.18, lampMat([0xff7ab0,0xffffff,0xffd35a][k%3])));
+    }
+    if (lv >= 3){ a.add(part(G.cyl, GOLD, 0.18,0.1,0.18, 0,R+0.02,0)); for (let k=0;k<5;k++){ const q = k/5*Math.PI*2; a.add(part(G.cone4, GOLD, 0.04,0.14,0.04, Math.cos(q)*0.15,R+0.13,Math.sin(q)*0.15)); } }
+  }
+  if (isFarm){          // 日の丸・提灯・帆・宝
+    for (const z of [-1,1]){ a.add(part(G.sph, 0xf8f4e8, 0.3,0.3,0.06, 0,0,z*(R-0.01))); a.add(part(G.sph, 0xd02830, 0.19,0.19,0.06, 0,0,z*(R+0.03))); }
+    if (lv >= 1) for (let k=0;k<7;k++) a.add(part(G.sph, 0, 0.07,0.1,0.07, -0.9+k*0.3,-R+0.05-Math.sin(k/6*Math.PI)*0.1,0.3, lampMat(k%2?0xffe0a0:0xff5a4a)));
+    if (lv >= 2){          // 船の形のゴンドラと帆
+      a.add(part(G.box, 0x7a4a2a, gw+0.1,0.14,0.36, 0,gy-0.17,0));
+      for (const x of [-1,1]){ strut(a, 0x7a4a2a, x*gw/2,gy-0.17,0, x*(gw/2+0.3),gy+0.14,0, 0.12); a.add(part(G.sph, GOLD, 0.07,0.07,0.07, x*(gw/2+0.3),gy+0.17,0)); }
+      a.add(part(G.box, 0xf8f0dc, 0.5,0.4,0.02, -0.1,R+0.3,0)); a.add(part(G.sph, 0xd02830, 0.1,0.1,0.03, -0.1,R+0.3,0.02)); a.add(part(G.cyl, 0x7a4a2a, 0.025,0.64,0.025, -0.1,R+0.25,-0.03));
+    }
+    if (lv >= 3){
+      for (let k=0;k<7;k++) a.add(part(G.dod, [GOLD,0xff5a7a,0x7ee0ff][k%3], 0.09,0.09,0.09, -0.36+k*0.12,gy+0.16+(k%2)*0.06,0.14));
+      for (const x of [-1,1]){ const t = part(G.cone4, GOLD, 0.09,0.36,0.06, x*0.7,R+0.05,0); t.rotation.z = -x*0.6; a.add(t); }
+    }
   }
   props.forEach(pr => a.add(pr));
   a.scale.setScalar(1 + lv*0.08);
@@ -3997,7 +4256,7 @@ function tourCheck(){
   if (!airship || !airship.ended || ph.st !== 'docked' || ph.board || S.day === S.airFirst || S.tourDay === S.day) return;
   S.tourDay = S.day;
   const fl = allB('fun').reduce((a,i)=>a + S.cells[i].b.lvl, 0);
-  const n = Math.max(1, Math.round((2 + 3*S.airLvl) * (1 + 0.6*fl) * (0.5 + S.mood/100))), inc = n * (15 + 12*fl);
+  const n = Math.max(1, Math.round((2 + 3*S.airLvl) * (1 + 0.6*fl) * (0.5 + S.mood/100))), inc = Math.round(n * (15 + 12*fl) * tourMul());
   S.gold += inc; S.stats.earned += inc; S.stats.tourists = (S.stats.tourists || 0) + n; S.tourN = n;
   popAt(airship.pad.x, 1.6, airship.pad.z, '+'+fmt(inc)+'G', 'g'); sfx('coin');
   toast(L('飛行船が到着：観光客 '+n+'人 +'+fmt(inc)+'G', 'Airship landed: '+n+' tourists +'+fmt(inc)+'G'), 'good');
@@ -4425,6 +4684,10 @@ function fitIsland(a){          // 陸の四隅が画面に収まる倍率と中
     const u = x*cy - z*sy, v = (y + 0.6)*cp - (x*sy + z*cy)*sp;
     x0 = Math.min(x0,u); x1 = Math.max(x1,u); y0 = Math.min(y0,v); y1 = Math.max(y1,v);
   }
+  if (S.airport && airship?.ended) for (const dx of [-1.9, 1.9]) for (const y of [0.2, 2.6]){          // 飛行船も入れる
+    const x = airship.pad.x + dx, z = airship.pad.z, u = x*cy - z*sy, v = (y + 0.6)*cp - (x*sy + z*cy)*sp;
+    x0 = Math.min(x0,u); x1 = Math.max(x1,u); y0 = Math.min(y0,v); y1 = Math.max(y1,v);
+  }
   const mx = (x0+x1)/2, d = (y0+y1)/2/sp;
   return {zoom:Math.max(13, 16/a) / (Math.max(y1-y0, (x1-x0)/a)*1.03), x:mx*cy - d*sy, z:-mx*sy - d*cy};
 }
@@ -4740,6 +5003,7 @@ for (const k of ITEM_KEYS) S.stats.shipped[k] ??= 0;
 makeClouds();
 orderChips();
 const grazingIsNew = !VISIT && initHerd();
+if (!S.funPending && allB('fun').length) S.funOpened = 1;
 if (S.driveV !== 2){ S.drive = [0,1,1,2][S.drive || 0]; S.driveV = 2; }          // 4段階だったころの経営方針
 if (isFarm){ S.upg.pump ??= 0; calcFlow(); }
 initWorld();
@@ -4757,6 +5021,7 @@ if (!VISIT && !getPhoto(ISLAND)) setTimeout(takePhoto, 2500);
 
 // テスト・デバッグ用の窓口
 window.DTT = {get S(){return S;}, P, W, WH, place, hire, levelUp, sell, clickCell, collect, moveBuilding, chooseEvent, workers, allB, evaluate, treeCount, sim, onDawn, EVENTS, eventQueue, critters, expandIsland,
+  buildAirship, tourMul, setCellMesh, takePhoto, snapIsland,
   buyUpg, planRiver, useRiver, riverWhy, autoRiver, canLay, canPeel, isFall, pumpMax, riverCells, dryCount, get waterAll(){return waterAll;},
   skipTut:()=>{S.tut=-1;$('#tut').hidden=true;}, reset:resetGame,
   screenOf:(i)=>{const p=wpos(i); return toScreen(p.x,0,p.z);},
