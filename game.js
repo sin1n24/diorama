@@ -162,12 +162,12 @@ const hash = (a, b=0) => { const s = Math.sin(a*127.1 + b*311.7 + 13.13) * 43758
 
 /* ========================================================= 状態 */
 let S;
-// opt = {gold, n}：島へ渡ってきたときに持ってきたお金と人数
-function newState(isl = ISLAND, opt = null){
+// どの島も同じ条件（350G・住民0）から始める
+function newState(isl = ISLAND){
   const I = ISLANDS[isl], dairy = isl === 'dairy';
   const s = {
-    v:2, seed:Math.random()*1000, gold:opt ? opt.gold : P.startGold, items:{}, sat:{}, auto:{}, seen:{[I.tree]:true}, satCap:{},
-    day:1, time:P.dayLen*P.dayFrac*3/14, mood:65, speed:1, idle:opt ? opt.n : 0, origin:opt,
+    v:2, seed:Math.random()*1000, gold:P.startGold, items:{}, sat:{}, auto:{}, seen:{[I.tree]:true}, satCap:{},
+    day:1, time:P.dayLen*P.dayFrac*3/14, mood:65, speed:1, idle:0,
     tut:dairy ? -1 : 0, flags:{mine:false, sacred:false, steam:false, craft:false, forest:false, protectUntil:0, holidayDay:0, wageBonus:0, crack:false, stoneSafeUntil:0},
     upg:{route:0, axe:0, carry:0, road:0}, nightShift:false, nightUsed:false, nsStreak:0,
     contracts:[], loans:[], story:[], doneEvents:{}, lastEvent:'', airport:false,
@@ -192,16 +192,6 @@ function newState(isl = ISLAND, opt = null){
     s.cells[i] = {t:'rock', hp:P.rockHP, r:Math.random()}; rocks++;
   }
   s.cells[WH] = {t:'b', r:.5, b:{type:'warehouse', lvl:1, workers:0, inb:0, st:{}, prog:0, build:0}};
-  if (opt){
-    // 移住者が建てた家と、当面の干し草（お金が少なくても始められるように）
-    let need = Math.ceil(opt.n / 3);
-    for (const i of [WH-3, WH+3, WH-4, WH+4, WH-W-3, WH-W+3]){
-      if (need <= 0) break;
-      const r = Math.random();
-      s.cells[i] = {t:'b', r, b:{type:'house', lvl:1, workers:0, inb:0, st:{}, prog:0, build:0, look:houseLook(null, r)}}; need--;
-    }
-    s.items[I.tree] = 20;
-  }
   return s;
 }
 
@@ -1584,6 +1574,13 @@ function clickCell(i){
 }
 
 /* ---- 1日の区切り */
+// 救済：緑がほぼ尽きたら翌朝に少し生える。お金も尽きていれば、すぐ使える大きさで
+function greenRescue(){
+  if (S.cells.filter(c => c.t === 'tree' || c.t === 'sapling').length >= 2) return;
+  const poor = S.gold < 300, g = S.cells.map((c,i) => c.t === 'grass' && i !== WH ? i : -1).filter(i=>i>=0).sort(()=>Math.random()-.5).slice(0, poor ? 6 : 3);
+  for (const i of g){ S.cells[i] = poor ? {t:'tree', hp:P.treeHP, r:Math.random()} : {t:'sapling', g:0, r:Math.random()}; setCellMesh(i); if (CM[i]) CM[i].userData.pop = 0.4; }
+  if (g.length) toast(L('風に乗って種が届き、'+ISL.treeN[0]+'が少し生えてきた','The wind carried seeds in: some '+ISL.treeN[1].toLowerCase()+' is growing'), 'good');
+}
 function onDawn(){
   S.yday = {}; for (const k of ITEM_KEYS) S.yday[k] = S.stats.made[k] - (S.madePrev?.[k] || 0);
   S.madePrev = {...S.stats.made};
@@ -1639,6 +1636,7 @@ function onDawn(){
       story(nm[0]+'を働かせすぎて壊した', 'Overworked the '+nm[1]+' until it broke');
     }
   }
+  greenRescue();
   const NO = S.nightOrder;
   if (NO && S.day > NO.day){
     S.nightShift = NO.prev; S.nightOrder = null;
@@ -2579,7 +2577,7 @@ function setHTML(el, html, key){ if (key === 'p' ? html === lastPanelHTML : html
 function neighborHTML(){
   const to = ISLAND === 'sky' ? 'dairy' : 'sky', been = !!saveBox.islands[to], nm = N(islName(to));
   const note = canTravel(to)
-    ? (been ? L('今の島はこのまま残り、いつでも行き来できる','This island stays as it is, and you can come back any time') : L('所持金の1/10と住民（最大10人）を連れて渡る。この島はこのまま残り、いつでも戻れる','Take 1/10 of your gold and up to 10 residents. This island stays, and you can return any time'))
+    ? (been ? L('今の島はこのまま残り、いつでも行き来できる','This island stays as it is, and you can come back any time') : L('350G・住民0人からの新しい島。この島はこのまま残り、いつでも戻れる','A fresh island: 350G and no residents. This island stays, and you can return any time'))
     : L('空港を開くと渡れる','Open an airport to travel there');
   return '<div class="row"><span class="grow">'+nm+'<br><small>'+note+'</small></span><button class="btn hot w" data-act="travelMenu:'+to+'" '+(canTravel(to)?'':'disabled')+'>'+(been ? L('行く','Go') : L('渡る','Travel'))+'</button></div>' +
     '<div class="kv" style="color:var(--sub)">'+L('農耕の島（風車と畑）……準備中','Farm Island (windmill and fields)… coming soon')+'</div>';
@@ -2789,7 +2787,7 @@ function doAct(actStr, el){
     case 'restore': restoreBackup(+arg); return;
     case 'backTitle': showTitle(); return;
     case 'travelMenu': showTravel(arg); return;
-    case 'travel': { const [to, n] = arg.split(','); travel(to, +n); return; }
+    case 'travel': travel(arg); return;
     case 'reset': resetGame(); break;
     case 'confirmYes': if (mode && pending >= 0){ doMode(pending); } break;
     case 'confirmNo': cancelMode(); break;
@@ -3141,60 +3139,50 @@ function resetGame(){
   noSave = true;
   try {
     saveBox = latestBox();
-    // 渡ってきた島は「着いたとき」のお金と人数からやり直す
-    if (S.origin) saveBox.islands[ISLAND] = newState(ISLAND, S.origin); else delete saveBox.islands[ISLAND];
+    delete saveBox.islands[ISLAND];
     saveBox.cur = ISLAND; localStorage.setItem(SAVE_KEY, JSON.stringify(saveBox));
     if (ISLAND === 'sky') localStorage.removeItem(OLD_KEY);
   } catch(e){}
   location.reload();
 }
 
-/* ---- 島の移動：はじめて渡るときは所持金の1/10、住民は毎回10人まで連れていける */
+/* ---- 島の移動：お金も住民も持ちこさない。どの島もゼロから始め、それぞれ残る */
 function canTravel(to){ return !!ISLANDS[to] && to !== ISLAND && (to === 'sky' || S.airport || !!saveBox.islands[to]); }
 function showTravel(to){
   if (!canTravel(to)) return;
-  const first = !saveBox.islands[to], gold = first ? Math.max(0, Math.floor(S.gold/10)) : 0, max = Math.min(10, pop()), nm = N(islName(to));
-  const ns = [...new Set([max, Math.min(6,max), Math.min(3,max), 0])];
+  const first = !saveBox.islands[to], nm = N(islName(to));
   closePanel();
   $('#modal .mbox').innerHTML = gfix('<h2>'+L(nm+'へ渡る','Travel to the '+nm)+'</h2>' + evImg('airship') +
-    '<p>'+(first ? L('持っていくお金：<b>'+fmt(gold)+'G</b>（所持金の1/10）。連れていく住民を選ぼう。','You take <b>'+fmt(gold)+'G</b> (1/10 of your gold). Choose who comes along.') : L('お金はそれぞれの島に置いたまま。連れていく住民を選ぼう。','Each island keeps its own gold. Choose who comes along.'))+'</p>' +
-    '<p class="kv" style="color:var(--sub)">'+L('今の島はこのまま残る（留守のあいだ時間は止まる）。連れていった住民は、向こうでは無料で働いてくれる。','This island stays as it is (time stops while you are away). Residents you bring work there without a hiring fee.') +
-    (first && gold < 300 ? '<br><span class="r">'+L('お金が少なめ。もう少し貯めてから渡ると楽に始められる。','Not much gold. Saving up first makes for an easier start.')+'</span>' : '') +
-    (!first ? '<br>'+L('向こうに家が足りないと幸福が下がる。','Happiness drops if there aren’t enough houses there.') : '') + '</p>' +
+    '<p>'+(first ? L('新しい島は<b>'+fmt(P.startGold)+'G・住民0人</b>からのスタート。','The new island starts with <b>'+fmt(P.startGold)+'G and no residents</b>.') : L('前に離れたときのまま待っている。','It waits just as you left it.'))+'</p>' +
+    '<p class="kv" style="color:var(--sub)">'+L('お金も住民も持ちこさない。今の島はこのまま残り、いつでも戻れる（留守のあいだ時間は止まる）。','Gold and residents stay here. This island remains as it is and you can return any time (time stops while you are away).')+'</p>' +
     '<div class="opts"><button class="opt" data-act="closeModal"><div class="n">◀ '+L('やめる','Stay here')+'</div></button><div style="height:10px"></div>' +
-    ns.map(n => '<button class="opt" data-act="travel:'+to+','+n+'"><div class="n">▶ '+(n ? L('住民 '+n+'人と渡る','Go with '+n+' residents') : L('自分だけで渡る','Go alone'))+'</div></button>').join('') + '</div>');
+    '<button class="opt" data-act="travel:'+to+'"><div class="n">▶ '+L('渡る','Set off')+'</div></button></div>');
   $('#modal').hidden = false;
 }
-function travel(to, n){
+function travel(to){
   if (noSave || !canTravel(to)) return;
   backup('travel');
   saveBox = latestBox();
-  const first = !saveBox.islands[to], gold = first ? Math.max(0, Math.floor(S.gold/10)) : 0;
-  n = clamp(Math.floor(n) || 0, 0, Math.min(10, pop()));
-  // 手の空いた人から先に、足りなければ最近雇った人から連れていく
-  const idle = Math.min(S.idle || 0, n); S.idle = (S.idle || 0) - idle;
-  for (let k=idle; k<n; k++) removeWorker(workers[workers.length-1].bi);
-  S.gold -= gold;
-  let T = saveBox.islands[to];
-  if (first) T = newState(to, {gold, n}); else T.idle = (T.idle || 0) + n;
-  T.arrived = {from:ISLAND, gold, n, first};
-  if (first) story('住民'+n+'人が'+ISLANDS[to].n[0]+'へ旅立った', n+' residents left for the '+ISLANDS[to].n[1]);
+  const first = !saveBox.islands[to], T = first ? newState(to) : saveBox.islands[to];
+  T.arrived = {first};
   saveBox.islands[ISLAND] = S; saveBox.islands[to] = T; saveBox.cur = to;
   try { localStorage.setItem(SAVE_KEY, JSON.stringify(saveBox)); }
-  catch(e){ toast(L('保存できなかったため、移動を中止した','Could not save, so travel was cancelled'),'bad'); S.gold += gold; S.idle += n; $('#modal').hidden = true; return; }
+  catch(e){ toast(L('保存できなかったため、移動を中止した','Could not save, so travel was cancelled'),'bad'); $('#modal').hidden = true; return; }
   noSave = true;
   location.href = location.pathname + location.search.replace(/([?&])isl=\w+&?/, '$1').replace(/[?&]$/, '');
 }
 function showArrival(){
   const A = S.arrived, nm = N(islName(ISLAND)); delete S.arrived; save();
   $('#modal .mbox').innerHTML = gfix(evImg('airship') + '<h2>'+L(nm+'に着いた！','Welcome to the '+nm+'!')+'</h2>' +
-    '<p>'+(A.first ? L('持ってきたもの：<b>'+fmt(A.gold)+'G</b>・住民<b>'+A.n+'人</b>・干し草20。', 'You brought <b>'+fmt(A.gold)+'G</b>, <b>'+A.n+' residents</b> and 20 hay.') : L('住民<b>'+A.n+'人</b>を連れてきた。','You brought <b>'+A.n+' residents</b>.')) +
-    (A.n ? L('連れてきた住民は無料で働いてくれる。',' They work without a hiring fee.') : '')+'</p>' +
-    (A.first && ISLAND === 'dairy' ? '<p class="kv">'+L(
-      '・牧草をタップ、または<b>草刈り小屋</b>で干し草にする<br>・<b>牛舎</b>で干し草→牛乳<br>・牛乳は<b>バター</b>か<b>チーズ</b>に。チーズは<b>熟成蔵</b>でとても高くなる<br>・バター小屋・チーズ工房・熟成蔵を建てるには<b>岩塩</b>（ピンクの岩）がいる<br>・目標は <b>'+fmt(P.goal)+'G で空港を開き、品評会の飛行船を呼ぶ</b>こと',
-      '• Tap grass, or build a <b>Mowing Hut</b>, to make hay<br>• A <b>Cow Barn</b> turns hay into milk<br>• Milk becomes <b>butter</b> or <b>cheese</b>. An <b>Aging Cellar</b> makes cheese very valuable<br>• Building a Churn House, Creamery or Cellar takes <b>rock salt</b> (the pink rocks)<br>• Goal: <b>open an airport for '+fmt(P.goal)+'G and call the fair airship</b>')+'</p>' : '') +
+    '<p>'+(A.first ? L('<b>'+fmt(P.startGold)+'G・住民0人</b>からのスタート。','You start with <b>'+fmt(P.startGold)+'G and no residents</b>.') : L('離れたときのまま、みんなが待っていた。','Everything is just as you left it.'))+'</p>' +
+    (A.first && ISLAND === 'dairy' ? dairyGuide() : '') +
     '<div class="opts"><button class="opt" data-act="closeModal"><div class="n">▶ '+L('はじめる','Start')+'</div></button></div>');
   $('#modal').hidden = false;
+}
+function dairyGuide(){
+  return '<p class="kv">'+L(
+    '・牧草をタップ、または<b>草刈り小屋</b>で干し草にする<br>・<b>牛舎</b>で干し草→牛乳<br>・牛乳は<b>バター</b>か<b>チーズ</b>に。チーズは<b>熟成蔵</b>でとても高くなる<br>・バター小屋・チーズ工房・熟成蔵を建てるには<b>岩塩</b>（ピンクの岩）がいる<br>・目標は <b>'+fmt(P.goal)+'G で空港を開き、品評会の飛行船を呼ぶ</b>こと',
+    '• Tap grass, or build a <b>Mowing Hut</b>, to make hay<br>• A <b>Cow Barn</b> turns hay into milk<br>• Milk becomes <b>butter</b> or <b>cheese</b>. An <b>Aging Cellar</b> makes cheese very valuable<br>• Building a Churn House, Creamery or Cellar takes <b>rock salt</b> (the pink rocks)<br>• Goal: <b>open an airport for '+fmt(P.goal)+'G and call the fair airship</b>')+'</p>';
 }
 addEventListener('beforeunload', save);
 // スマホは beforeunload が来ないことが多い
