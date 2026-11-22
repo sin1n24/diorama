@@ -45,6 +45,8 @@ button{font:inherit;color:inherit;cursor:pointer}
 .chip.item:hover{background:#3c4690}
 .chip small{color:var(--sub)}
 #goldChip{font-size:18px}
+#goldChip b{color:var(--paper)}
+.gu{font-style:normal;color:var(--hi);margin-left:.22em}
 #missions{position:absolute;left:8px;top:52px;display:flex;flex-wrap:wrap;gap:6px;pointer-events:none;max-width:calc(100% - 280px)}
 .mis{background:rgba(27,31,58,.92);border:2px solid var(--hi);padding:3px 8px;font-size:12px;min-width:170px;box-shadow:3px 3px 0 rgba(0,0,0,.5)}
 .mis .bars{display:flex;flex-direction:column;gap:2px;margin-top:2px}
@@ -126,10 +128,10 @@ button{font:inherit;color:inherit;cursor:pointer}
 <div id="pops"></div>
 <div id="ui">
   <div id="top">
-    <div class="chip" id="goldChip">G <b id="gold">0</b></div>
+    <div class="chip" id="goldChip"><b id="gold">0</b><i class="gu">G</i></div>
     <span id="chips" style="display:contents"></span>
     <div class="chip" id="clock">Day 1</div>
-    <div class="chip" id="moodChip">♥ <b id="mood">65</b></div>
+    <div class="chip" id="moodChip"><span id="moodLbl">幸福</span> <b id="mood">65</b></div>
     <button class="btn" id="nsBtn"></button>
     <button class="btn" id="spdBtn">▶ x1</button>
     <button class="btn" id="setBtn" data-act="panel:settings">⚙</button>
