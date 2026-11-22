@@ -345,8 +345,8 @@ const UG_FACES = ['e', 'w'];
 const strataMesh = new THREE.InstancedMesh(new THREE.BoxGeometry(1,1,1), MT(0xffffff), 800);
 strataMesh.receiveShadow = true; strataMesh.count = 0; scene.add(strataMesh);
 const oreMesh = new THREE.InstancedMesh(G.dod, MT(0xffffff), 400); oreMesh.count = 0; scene.add(oreMesh);
-const beamMesh = new THREE.InstancedMesh(G.box, MT(0x8a5a2e), 600); beamMesh.count = 0; scene.add(beamMesh);
-const lampMesh = new THREE.InstancedMesh(new THREE.BoxGeometry(0.06,0.07,0.06), new THREE.MeshBasicMaterial({color:0xffd080}), 160); lampMesh.count = 0; scene.add(lampMesh);
+const beamMesh = new THREE.InstancedMesh(G.box, MT(0xb07838), 600); beamMesh.count = 0; scene.add(beamMesh);
+const lampMesh = new THREE.InstancedMesh(new THREE.BoxGeometry(0.08,0.09,0.08), new THREE.MeshBasicMaterial({color:0xffe090}), 160); lampMesh.count = 0; scene.add(lampMesh);
 const ROCK_COL = [0x8a5a3a, 0x7a6252, 0x6e5a4c, 0x655246, 0x5c4a40, 0x544438, 0x4c3e34, 0x463a30];
 let UG = null, ugDug = -1;
 // 掘り進める順番：入口（上段の中央）から、横に長い坑道を中心に広がっていく
@@ -408,9 +408,9 @@ function updateStrata(){
         if (dug.has(r*F.cols.length + ci)){
           // 掘った坑道：奥の壁だけ残してくぼませ、支柱とランタンを立てる
           const P0 = facePt(F, c.u, 0.75, y), [ax, az] = along(1, 0.5);
-          box(P0.x, P0.y, P0.z, ax, 0.3, az, 0x5a3c26, (hh-0.5)*0.05);
+          box(P0.x, P0.y, P0.z, ax, 0.3, az, 0x34221a, (hh-0.5)*0.04);
           const below = r+1 < UG.rows && !dug.has((r+1)*F.cols.length + ci);
-          if (below || r+1 >= UG.rows){ const Pf = facePt(F, c.u, 0.25, y - 0.14), [fx, fz] = along(1, 0.5); box(Pf.x, Pf.y, Pf.z, fx, 0.02, fz, 0x8a6a44); }
+          if (below || r+1 >= UG.rows){ const Pf = facePt(F, c.u, 0.25, y - 0.14), [fx, fz] = along(1, 0.5); box(Pf.x, Pf.y, Pf.z, fx, 0.02, fz, 0xb08a58); }
           for (const du of [-0.46, 0.46]){ const Pb = facePt(F, c.u + du*(F.t[0]+F.t[1]), 0.06, y), [bx, bz] = along(0.05, 0.05); beam(Pb.x, Pb.y, Pb.z, bx, 0.3, bz); }
           const Pl = facePt(F, c.u, 0.06, y + 0.135), [lx, lz] = along(1, 0.05); beam(Pl.x, Pl.y, Pl.z, lx, 0.03, lz);
           if (hh < 0.45 && nl < 160){ const Pm = facePt(F, c.u + 0.3*(F.t[0]+F.t[1]), 0.1, y + 0.07); m4.makeTranslation(Pm.x, Pm.y, Pm.z); lampMesh.setMatrixAt(nl++, m4); }
@@ -2221,7 +2221,7 @@ function expandIsland(dir){
     S.cells[i] = r < 0.35 ? {t:'tree', hp:P.treeHP, r:Math.random()} : r < 0.43 ? {t:'rock', hp:P.rockHP, r:Math.random()} : {t:'grass', r:Math.random()};
     setCellMesh(i); if (CM[i]) CM[i].userData.pop = 0.4;
   }
-  updateTiles(); sfx('build'); shake(0.12);
+  updateTiles(); if (S.airport) buildAirship(true); sfx('build'); shake(0.12);
   story('島を広げた','Expanded the island'); toast(L('島が広がった！','The island grew!'),'good');
 }
 
