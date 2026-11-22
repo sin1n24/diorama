@@ -247,7 +247,7 @@ function newState(isl = ISLAND){
   if (farm){
     // 湧き水と短い川、はじめの田畑
     const at = (x,z) => z*W + x, put = (x,z,c) => s.cells[at(x,z)] = {r:Math.random(), ...c};
-    put(3,4,{t:'water', spring:true}); put(4,4,{t:'water', river:1}); put(5,4,{t:'water', river:1}); s.riverV = 1; s.riverTip = at(5,4);
+    put(3,4,{t:'water', spring:true}); put(4,4,{t:'water', river:1}); put(5,4,{t:'water', river:1}); s.riverV = 2; s.riverTip = at(5,4);
     for (const [x,z] of [[4,3],[5,3],[4,5]]) put(x,z,{t:'sapling', crop:'rice', g:0.55});
     for (const [x,z] of [[7,6],[8,6],[7,7],[8,7],[9,7]]) put(x,z,{t:'tree', crop:'wheat', hp:4});
     for (const [x,z] of [[2,7],[3,7]]) put(x,z,{t:'sapling', crop:'veg', g:0.7});
@@ -2021,9 +2021,11 @@ function growRiver(plan){
 }
 // 手で掘っていたころのセーブ：今ある手掘りの流れはそのまま川に。買ってあった水車のぶんは伸ばす
 function migrateRiver(){
-  if (S.riverV) return;
-  S.riverV = 1;
-  const all = riverCells();
+  if (S.riverV >= 2) return;
+  const all = riverCells(), grown = !!S.riverV;
+  for (const i of all) if (!S.cells[i].spring) S.cells[i].river = 1;          // つながっている流れは川：埋められない（下流が切れるため）
+  S.riverV = 2;
+  if (grown) return;
   S.riverTip = all[all.length-1];
   const lv = S.upg.pump || 0;
   for (let k=0; k<lv && riverCells().length - 1 < 2 + RIVER.step*lv; k++){ const p = planRiver(); if (!p) break; growRiver(p); }
