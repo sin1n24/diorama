@@ -148,7 +148,7 @@ Object.assign(BUILD, {
 });
 // 農耕の島の建物
 Object.assign(BUILD, {
-  farmhut:   {n:['農家','Farmhouse'], isl:'farm', cost:{g:60}, job:'chop', cat:'res',
+  farmhut:   {n:['農家','Farmhouse'], isl:'farm', cost:{g:60}, job:'chop', cat:'field',
     d:['近くの実った作物を刈り取って貯める。刈った畑には同じ作物がまた育つ','Harvests nearby ripe crops and stores them. Fields regrow the same crop.']},
   windmill:  {n:['風車','Windmill'], isl:'farm', cost:{g:150}, in:'wheat', out:'flour', time:3, ind:true, partner:'patisserie', cat:'proc', light:true,
     d:['小麦→小麦粉。菓子工房の隣だと速い','Wheat → Flour. Faster next to a Patisserie.']},
@@ -160,7 +160,7 @@ Object.assign(BUILD, {
     d:['米→地酒（高い）。保存食の蔵の隣だと速い','Rice → Rice wine (valuable). Faster next to a Preserve House.']},
 });
 const islOk = d => !d.isl || d.isl === ISLAND;
-const CATS = [...(isFarm ? [['field',['田畑','Fields']]] : []), ['res',['資源','Resources']], ['proc',['加工','Crafting']], ['life',['暮らし','Living']]];
+const CATS = [...(isFarm ? [['field',['田畑','Fields']]] : [['res',['資源','Resources']]]), ['proc',['加工','Crafting']], ['life',['暮らし','Living']]];
 const UPGS = [
   {id:'route', n:['交易気球の定期便','Trade Balloon Route'], cost:[400],
     d:['気球が来るたびに、選んだ品物を自動で売る','Each balloon visit auto-sells the goods you choose.']},
@@ -178,12 +178,11 @@ const UPGS = [
     [['石畳の道','Cobblestone'], ['よく通る道が石畳になり、その上は速く歩ける','Worn paths get paved, and walking on them is faster.']],
     [['街灯のある道','Lamplit Roads'], ['石畳に街灯が立ち、さらに速く歩ける。夜の作業と移動 +30%','Street lamps line the paving for faster walking. Night work and walking +30%.']]]},
 ];
-// 働き方：幸福を削って、効率ともうけを取る（1日1回だけ変えられる）
+// 経営方針：幸福を削って、効率ともうけを取る（1日1回だけ変えられる）
 const DRIVE = [
-  {n:['ふつうに働く','Normal'],              work:1,    sale:1,    mood:0,   d:['幸福そのまま','No change']},
-  {n:['ノルマの掲示板','Quota Board'],       work:1.25, sale:1,    mood:-8,  d:['作業 +25%、幸福 -8','Work +25%, happiness -8']},
-  {n:['鬼監督と鐘','Slave-driver’s Bell'],   work:1.6,  sale:1.1,  mood:-18, d:['作業 +60%、売値 +10%、幸福 -18','Work +60%, sales +10%, happiness -18']},
-  {n:['金の豚さま','The Golden Pig'],        work:2.1,  sale:1.25, mood:-30, d:['作業 +110%、売値 +25%、幸福 -30。緑の再生が半分、空がくすみ、毎朝15%で機械が壊れる','Work +110%, sales +25%, happiness -30. Regrowth halved, hazy skies, 15% chance of a breakdown each morning']},
+  {n:['優良経営','Good Management'],   work:1,   sale:1,    mood:0,   d:['いつもどおり','As usual']},
+  {n:['ブラック経営','Sweatshop'],     work:1.5, sale:1.1,  mood:-15, d:['作業+50%・売値+10%・幸福-15','Work +50%, sales +10%, happiness -15']},
+  {n:['社畜の島','Island of Drones'], work:2.1, sale:1.25, mood:-30, d:['作業+110%・売値+25%・幸福-30・故障あり','Work +110%, sales +25%, happiness -30, breakdowns']},
 ];
 const HOUSE_WALLS = [0xf2d9b0, 0xd9e6f2, 0xf2c9c9, 0xd8f0c8, 0xf0e6a8, 0xe4e4e4, 0xc9b8e8];
 const HOUSE_ROOFS = [0xd05a4a, 0x4a6ab0, 0x3a8a6a, 0xa05ac0, 0xd08a3a, 0x5a5a5a, 0x2a8ab0];
@@ -1234,7 +1233,7 @@ const allB = type => { const r=[]; for (let i=0;i<W*W;i++) if (isB(i,type)) r.pu
 const countB = type => allB(type).length;
 const treeCount = () => S.cells.filter(c=>c.t==='tree').length;
 const workerCount = () => workers.length;
-const driveOf = () => DRIVE[S.drive || 0];
+const driveOf = () => DRIVE[S.drive || 0] || DRIVE[2];
 const lampNight = () => S.upg.road >= 2 && isNight() ? 1.3 : 1;
 const workF = () => driveOf().work * lampNight();
 const pop = () => workerCount() + (S.idle || 0);          // 働いている人＋手の空いた移住者
@@ -2038,7 +2037,7 @@ function growRate(i, crop, se = season(), wet = isWet(i)){
   let r = C.s[se] * (wet ? C.wet : C.dry);
   if (crop === 'veg' && hasMate(i, crop)) r *= S.flags.sisters ? 1.9 : 1.45;
   if (crop === 'rice' && S.flags.heirloom) r *= 1.3;
-  return r * (S.flags.forest ? 1.3 : 1) * (S.flags.steam ? 0.8 : 1) * (S.drive === 3 ? 0.6 : 1) * (S.rainDay === S.day ? 2 : 1);
+  return r * trampleRate(i) * (S.flags.forest ? 1.3 : 1) * (S.flags.steam ? 0.8 : 1) * (S.drive === 2 ? 0.6 : 1) * (S.rainDay === S.day ? 2 : 1);
 }
 function growField(i, c, dt){
   if (!c.crop){ c.g = 1; } else c.g += dt / CROPS[c.crop].T * growRate(i, c.crop);
@@ -2070,6 +2069,7 @@ function useTool(tool, i){
   else { S.gold -= CROPS[tool].seed; S.cells[i] = {t:'sapling', crop:tool, g:0, r:Math.random()}; S.stats.planted++; }
   setCellMesh(i); if (CM[i]) CM[i].userData.pop = 0.3;
   if (was.t === 'water') refreshWater();
+  calcTraffic();
   paintAccF = 1;
   burst(p.x, 0.15, p.z, 'leaf', 4, 0x8a5a3a); sfx('ui');
   if (CROPS[tool]){ const r = growRate(i, tool); popAt(p.x, 0.7, p.z, N(SEASONS[season()])+' '+Math.round(r*100)+'%', r >= 1 ? 'g' : ''); }
@@ -2088,8 +2088,50 @@ function farmDawn(){
   for (let i=0;i<W*W && n<5;i++){ const c = S.cells[i]; if (c.t === 'sapling' && c.crop){ S.cells[i] = {t:'tree', hp:P.treeHP, r:c.r, crop:c.crop}; setCellMesh(i); n++; } }
   if (n) toast(L('見かねた長老が、蔵から育った苗を分けてくれた','The elder shared grown seedlings from the granary'), 'good');
 }
+/* ---- 人通り：道が横切るマスの田畑は踏まれて育ちが悪くなる（道の両端のマスは数えない） */
+const traffic = new Float32Array(W*W);
+const TRAMPLE = {k:0.9, min:0.3, show:0.15};
+const trampleRate = i => Math.max(TRAMPLE.min, 1/(1 + TRAMPLE.k*traffic[i]));
+function calcTraffic(){
+  if (!isFarm) return;
+  traffic.fill(0);
+  for (const k in S.routes){
+    const wv = S.routes[k]; if (wv < 0.14) continue;
+    const [x1, z1, x2, z2] = k.split(',').map(Number), len = Math.hypot(x2-x1, z2-z1);
+    if (len < 1.45) continue;
+    const a = cellAt(x1, z1), b = cellAt(x2, z2), v = wv * (S.cells[a].crop || S.cells[b].crop ? 0.3 : 1), inside = new Map(), n = Math.ceil(len/0.05);
+    for (let j=1;j<n;j++){ const c = cellAt(x1 + (x2-x1)*j/n, z1 + (z2-z1)*j/n); inside.set(c, (inside.get(c) || 0) + 1); }
+    for (const [c, m] of inside) if (c !== a && c !== b) traffic[c] += v * Math.min(1, m*len/n/0.6);          // 角をかすめるだけなら少し
+  }
+  paintAccF = 1;
+}
+function trafficTxt(i){
+  const t = traffic[i], loss = Math.round((1 - trampleRate(i))*100);
+  if (t < TRAMPLE.show) return '<span class="g">'+L('人通り なし','No foot traffic')+'</span>';
+  return '<span class="r">'+(t < 0.5 ? L('人通り 少し','Some foot traffic') : t < 1.1 ? L('人通り 多い','Busy path') : L('人通り とても多い','Very busy path'))+L('：育ち -',': growth -')+loss+'%</span>';
+}
+// 踏まれた畑の足あと・種まき中は人通りのあるマスを赤く
+const printMesh = new THREE.InstancedMesh(new THREE.BoxGeometry(0.07,0.006,0.11), MT(0x4a3428), 600);
+const warnMat = new THREE.MeshBasicMaterial({color:0xff4a3a, transparent:true, opacity:0.4, depthWrite:false});
+const warnMesh = new THREE.InstancedMesh(new THREE.PlaneGeometry(0.94,0.94).rotateX(-Math.PI/2), warnMat, W*W);
+for (const m of [printMesh, warnMesh]){ m.count = 0; m.frustumCulled = false; scene.add(m); }
+function paintTraffic(){
+  const m4 = new THREE.Matrix4(); let np = 0, nw = 0;
+  const warn = (mode?.kind === 'tool' && !!CROPS[mode.tool]) || (selCell >= 0 && (S.cells[selCell].t === 'grass' || !!S.cells[selCell].crop));
+  for (let i=0;i<W*W;i++){
+    const c = S.cells[i], t = traffic[i]; if (t < TRAMPLE.show) continue;
+    const p = wpos(i);
+    if (c.crop) for (let k=0, n = Math.min(8, 3 + Math.round(t*4)); k<n && np < 600; k++){
+      m4.makeRotationY(hash(i, k)*6.28).setPosition(p.x + (hash(i, k+9)-0.5)*0.8, 0.012, p.z + (hash(i, k+19)-0.5)*0.8);
+      printMesh.setMatrixAt(np++, m4);
+    }
+    if (warn && (c.t === 'grass' || c.crop)){ m4.makeTranslation(p.x, 0.016, p.z); warnMesh.setMatrixAt(nw++, m4); }
+  }
+  printMesh.count = np; warnMesh.count = nw;
+  printMesh.instanceMatrix.needsUpdate = warnMesh.instanceMatrix.needsUpdate = true;
+}
 const SEASON_TILE = [[0x93cc5c,0x87c052],[0x70b84c,0x66ae46],[0xd0b860,0xc4ac58],[0xeaf0f8,0xd8e2ee]].map(a => a.map(x => new THREE.Color(x)));
-const SOIL_DRY = new THREE.Color(0xa87850), SOIL_WET = new THREE.Color(0x6a4a3c), SOIL_SNOW = new THREE.Color(0xc8c4c8);
+const SOIL_PACKED = new THREE.Color(0xc4b49c), SOIL_DRY = new THREE.Color(0xa87850), SOIL_WET = new THREE.Color(0x6a4a3c), SOIL_SNOW = new THREE.Color(0xc8c4c8);
 let paintAccF = 1;
 function updateFarm(dt){
   if (!isFarm) return;
@@ -2103,10 +2145,11 @@ function updateFarm(dt){
   paintAccF += dt;
   if (paintAccF < 0.8) return;
   paintAccF = 0;
+  paintTraffic();
   const col = new THREE.Color(), se = season(), T = SEASON_TILE[se];
   for (let i=0;i<W*W;i++){
     const c = S.cells[i]; if (c.t === 'void') continue;
-    if (c.crop){ col.copy(isWet(i) ? SOIL_WET : SOIL_DRY); if (se === 3) col.lerp(SOIL_SNOW, 0.55); }
+    if (c.crop){ col.copy(isWet(i) ? SOIL_WET : SOIL_DRY); if (traffic[i] >= TRAMPLE.show) col.lerp(SOIL_PACKED, Math.min(0.75, 0.25 + traffic[i]*0.4)); if (se === 3) col.lerp(SOIL_SNOW, 0.55); }
     else col.copy(T[(cx(i)+cz(i))%2]);
     col.offsetHSL(0, 0, ((i*37)%7-3)*0.006); tileMesh.setColorAt(i, col);
   }
@@ -2141,6 +2184,7 @@ function toolInfo(i){
   else {
     name = N(CROPS[tool].n); cost = CROPS[tool].seed+'G';
     const wet = isWet(i);
+    Lst.push(trafficTxt(i));
     Lst.push((wet ? L('水ぎわ','Beside water') : L('乾いた土','Dry soil')) + (tool === 'veg' && hasMate(i, tool) ? L('・相棒あり',' · companion') : ''));
     Lst.push(SEASONS.map((n, se) => { const r = growRate(i, tool, se, wet); return '<span class="'+(r >= 1 ? 'g' : r < 0.45 ? 'r' : '')+'">'+(se === season() ? '▶' : '')+N(n)+' '+Math.round(r*100)+'%</span>'; }).join(' '));
   }
@@ -2323,9 +2367,9 @@ function onDawn(){
     else eventQueue.push({result:true, img:'meteor', title:L('星降る夜のあとで','After the starry night'), text:L('願いはひみつ。でも、みんな晴れやかな顔をしている。<b>幸福 +12</b>','The wishes are secret, but everyone looks happy. <b>Happiness +12</b>')});
   }
   if (S.drive){
-    S.stats.driveDays = (S.stats.driveDays || 0) + S.drive;
+    S.stats.driveDays = (S.stats.driveDays || 0) + S.drive*1.5;
     const c = allB().filter(i => BUILD[S.cells[i].b.type].ind && !S.cells[i].b.broken && S.cells[i].b.workers);
-    if (S.drive === 3 && c.length && Math.random() < 0.15){
+    if (S.drive === 2 && c.length && Math.random() < 0.15){
       const i = c[Math.floor(Math.random()*c.length)], nm = BUILD[S.cells[i].b.type].n;
       S.cells[i].b.broken = true; if (CM[i]) CM[i].rotation.z = 0.12;
       eventQueue.push({result:true, img:'storm_lose', title:L('働かせすぎて故障！','Worked to breaking point!'), text:L('休みなく回し続けた'+nm[0]+'が壊れた。修理するまで止まる。','The '+nm[1]+' broke down from overwork. It stops until repaired.')});
@@ -2354,10 +2398,10 @@ function sim(dt){
   S.time += dt;
   if (S.time >= P.dayLen){ S.time -= P.dayLen; onDawn(); }
   if (S.nightShift && isNight() && workerCount()) S.nightUsed = true;
-  wearAcc += dt; if (wearAcc >= 2){ wearAcc = 0; decayRoutes(); wearSocial(); }
+  wearAcc += dt; if (wearAcc >= 2){ wearAcc = 0; decayRoutes(); wearSocial(); calcTraffic(); }
   for (const k of ITEM_KEYS) S.sat[k] += (1 - S.sat[k]) * (S.sat[k] < 1 ? P.satRecover : 0.004) * dt;
   regrowAcc += dt;
-  const regMul = (S.drive === 3 ? 0.5 : 1) * (S.flags.skycow ? 1.5 : 1) * (S.flags.steam ? 0.5 : 1) * (S.flags.forest ? 2 : 1) * (S.day < S.flags.protectUntil ? 3 : 1) * (S.rainDay === S.day ? 3 : 1);
+  const regMul = (S.drive === 2 ? 0.5 : 1) * (S.flags.skycow ? 1.5 : 1) * (S.flags.steam ? 0.5 : 1) * (S.flags.forest ? 2 : 1) * (S.day < S.flags.protectUntil ? 3 : 1) * (S.rainDay === S.day ? 3 : 1);
   for (let i=0;i<W*W;i++){
     const c = S.cells[i];
     if (c.t === 'sapling'){
@@ -3196,7 +3240,7 @@ function updateDayNight(t){
   hemi.color.set(0xbfe3ff).lerp(_c1.set(0x3a4a90), nightAmt);
   _c1.copy(SKY.day[0]).lerp(SKY.night[0], nightAmt).lerp(SKY.dusk[0], Math.max(0,duskAmt)*0.7);
   _c2.copy(SKY.day[1]).lerp(SKY.night[1], nightAmt).lerp(SKY.dusk[1], Math.max(0,duskAmt)*0.85);
-  if (S.drive === 3){ const haze = 0.36*(1 - nightAmt); _c1.lerp(HAZE_C, haze); _c2.lerp(HAZE_C, haze); }
+  if (S.drive === 2){ const haze = 0.36*(1 - nightAmt); _c1.lerp(HAZE_C, haze); _c2.lerp(HAZE_C, haze); }
   postMat.uniforms.skyTop.value.copy(_c1); postMat.uniforms.skyBot.value.copy(_c2);
   postMat.uniforms.night.value = nightAmt; postMat.uniforms.time.value = t; postMat.uniforms.yaw.value = camS.yaw;
   // 流れ星：ふだんはまれに1つ。「流れ星の夜」は空いっぱいに、長く明るく何本も流れる
@@ -3399,8 +3443,8 @@ function fieldHTML(){
 function driveHTML(){
   if (S.tut >= 0) return '';
   const cur = S.drive || 0, locked = S.driveDay === S.day;
-  return '<h4 style="color:var(--hi);font-weight:normal;margin:12px 0 4px">'+L('もうけ第一：幸福と引きかえ','Profit first: paid in happiness')+'</h4>' +
-    '<div class="kv" style="color:var(--sub);margin-bottom:6px">'+(locked ? L('今日はもう変えた。明日また変えられる','Already changed today. Try again tomorrow') : L('1日1回変えられる。きつくすると幸福はすぐ下がり、ゆるめても少しずつしか戻らない。幸福が20を切ると住民が島を去る','Change once a day. Pushing harder lowers happiness at once; easing off recovers it slowly. Below 20, residents leave'))+'</div><div class="grid">' +
+  return '<h4 style="color:var(--hi);font-weight:normal;margin:12px 0 4px">'+L('経営方針','Management')+'</h4>' +
+    '<div class="kv" style="color:var(--sub);margin-bottom:6px">'+(locked ? L('今日はもう変えた','Already changed today') : L('1日1回変更。幸福20未満で住民が去る','Change once a day. Residents leave below 20 happiness'))+'</div><div class="grid">' +
     DRIVE.map((D, k) => '<button class="opt" data-act="drive:'+k+'" '+(k === cur || locked ? 'disabled' : '')+'><div class="n">'+(k === cur ? '● ' : '')+N(D.n)+'</div><div class="d">'+N(D.d)+'</div></button>').join('') + '</div>';
 }
 function setDrive(k){
@@ -3408,11 +3452,11 @@ function setDrive(k){
   if (k === cur || !DRIVE[k] || S.driveDay === S.day || S.tut >= 0) return;
   if (DRIVE[k].mood < DRIVE[cur].mood) addMood(DRIVE[k].mood - DRIVE[cur].mood);
   S.drive = k; S.driveDay = S.day;
-  toast(L('働き方：','Work style: ')+N(DRIVE[k].n), k > cur ? 'bad' : 'good');
-  story('働き方を「'+DRIVE[k].n[0]+'」に変えた', 'Switched to “'+DRIVE[k].n[1]+'”');
+  toast(L('経営方針：','Management: ')+N(DRIVE[k].n), k > cur ? 'bad' : 'good');
+  story('経営方針を「'+DRIVE[k].n[0]+'」に変えた', 'Switched to “'+DRIVE[k].n[1]+'”');
   sfx(k > cur ? 'event' : 'hire');
 }
-// 働き方は市場の屋根に現れる：掲示板 → 鐘 → 金の豚
+// 経営方針は市場の屋根に現れる：鐘 → 金の豚
 const driveG = new THREE.Group(); scene.add(driveG);
 let driveShown = 0, driveBell = null;
 function updateDrive(){
@@ -3421,16 +3465,12 @@ function updateDrive(){
     driveShown = lv; driveG.clear(); driveBell = null;
     const g = driveG, p = wpos(WH); g.position.set(p.x, 0.6, p.z);
     if (lv === 1){
-      for (const x of [-0.17,0.17]) g.add(part(G.box, 0x5a3a20, 0.03,0.3,0.03, x,0.1,0));
-      g.add(part(G.box, 0xf4f0e0, 0.46,0.3,0.03, 0,0.32,0));
-      for (const z of [-0.025,0.025]) for (let k=0;k<3;k++) g.add(part(G.box, 0xd83a2a, 0.07,0.07+k*0.07,0.02, -0.12+k*0.12,0.24+k*0.035,z));
-    } else if (lv === 2){
       for (const x of [-0.19,0.19]) g.add(part(G.box, 0x5a3a20, 0.05,0.55,0.05, x,0.24,0));
       g.add(part(G.box, 0xd83a2a, 0.5,0.07,0.14, 0,0.54,0));
       driveBell = new THREE.Group(); driveBell.position.y = 0.5;
       driveBell.add(part(G.cone6, 0xe8b840, 0.15,0.28,0.15, 0,-0.17,0)); driveBell.add(part(G.sph, 0x8a6a20, 0.04,0.04,0.04, 0,-0.33,0));
       g.add(driveBell);
-    } else if (lv === 3){
+    } else if (lv === 2){
       const GD = 0xf4c430, DK = 0xb88a18;
       g.add(part(G.box, 0x4a3a30, 0.42,0.12,0.36, 0,0.1,0));
       g.add(part(G.sph, GD, 0.27,0.22,0.22, 0,0.42,0)); g.add(part(G.sph, GD, 0.15,0.15,0.15, 0.25,0.5,0));
@@ -3454,10 +3494,8 @@ function renderPanel(){
         const c = buildCost(k);
         return '<button class="opt" data-act="build:'+k+'" '+(canPay(c)?'':'disabled')+'><div class="n">'+N(d.n)+'</div><div class="c">'+costTxt(c)+'</div><div class="d">'+N(d.d)+'</div></button>';
       }).join('') + '</div>' + (buildTab === 'life' && !S.airport ? '<div class="kv" style="color:var(--sub);margin-top:6px">'+L('？？？：空港が開くと、もっと大きな楽しみが…','??? When the airport opens, something big awaits…')+'</div>' : '');
-  } else if (panelName === 'farm'){
-    h = head(L('種をまく','Plant seeds')) + fieldHTML();
   } else if (panelName === 'upg'){
-    h = head(L('アップグレード','Upgrades')) + '<div class="grid">' + UPGS.filter(islOk).map(u=>{
+    h = head(L('改良','Improve')) + '<div class="grid">' + UPGS.filter(islOk).map(u=>{
       const lv = S.upg[u.id] || 0, c = u.cost[lv], max = c === undefined, T = u.tiers && u.tiers[Math.min(lv, u.tiers.length-1)];
       const chain = u.tiers ? '<div class="d">'+u.tiers.map(([n], k) => k < lv ? '<span class="g">'+N(n)+'</span>' : N(n)).join(' → ')+'</div>' : '';
       return '<button class="opt" data-act="upg:'+u.id+'" '+(max || S.gold < c ? 'disabled' : '')+'><div class="n">'+(T ? N(T[0]) : N(u.n)+(u.cost.length>1?' Lv'+lv+'/'+u.cost.length:''))+'</div><div class="c">'+(max?L('取得済み','Owned'):fmt(c)+'G')+'</div><div class="d">'+N(T ? T[1] : u.d)+'</div>'+chain+'</button>';
@@ -3520,7 +3558,7 @@ function renderPlot(i){
     '<div class="d">'+L('今の育ち ','Growth now ')+'<span class="'+(r >= 1 ? 'g' : r < 0.45 ? 'r' : '')+'">'+pct(r)+'</span>'+(k === best && !winter ? ' <span style="color:var(--hi)">'+L('おすすめ','best here')+'</span>' : '')+'<br>'+
     SEASONS.map((n, q) => N(n)+pct(growRate(i, k, q, wet))).join(' ')+'</div></button>').join('');
   setHTML(bpanelEl, '<div class="ph"><span>'+(c.crop ? N(CROPS[c.crop].n)+L('の畑',' field')+' '+Math.floor((c.g || 0)*100)+'%' : L('種をまく','Plant seeds'))+'</span><button class="btn x" data-act="unselect">×</button></div>' +
-    '<div class="kv">'+N(SEASONS[se])+'・'+(wet ? L('水ぎわ（稲向き）','Beside water (good for rice)') : L('乾いた土（小麦向き）','Dry soil (good for wheat)')) +
+    '<div class="kv">'+trafficTxt(i)+'<br>'+N(SEASONS[se])+'・'+(wet ? L('水ぎわ（稲向き）','Beside water (good for rice)') : L('乾いた土（小麦向き）','Dry soil (good for wheat)')) +
     (winter ? '<br><span class="r">'+L('冬は植えられない。春になったら種をまこう','You can’t plant in winter. Sow when spring comes')+'</span>' : '<br>'+L('選ぶとここにまかれ、続けてほかのマスもタップでまける','Pick one to plant here, then keep tapping to plant more'))+'</div>' +
     '<div class="seeds">'+opts+'</div>' + (c.crop ? '<div class="btns"><button class="btn" data-act="clearPlot">'+L('更地に戻す','Clear')+'</button></div>' : ''), 'b');
 }
@@ -3647,7 +3685,6 @@ function doAct(actStr, el){
     case 'backTitle': showTitle(); return;
     case 'plant': if (isFarm && CROPS[arg] && selCell >= 0 && useTool(arg, selCell)){ pending = -1; startMode({kind:'tool', tool:arg}); } break;
     case 'clearPlot': if (isFarm && selCell >= 0){ useTool('clear', selCell); } break;
-    case 'farm': if (isFarm){ if (mode?.kind === 'tool') cancelMode(); openPanel('farm'); } break;
     case 'tool': if (isFarm && (arg === 'clear' || CROPS[arg])) startMode({kind:'tool', tool:arg}); break;
     case 'bell': if (isDairy){ if (mode?.kind === 'bell') cancelMode(); else startMode({kind:'bell'}); } break;
     case 'buyCow': buyCow(selCell); break;
@@ -3676,7 +3713,7 @@ function applySettings(){
   sun.castShadow = SET.shadows; renderer.shadowMap.needsUpdate = true;
   makeRT();
   $('#rot').style.display = TOUCH ? 'flex' : 'none';
-  $('#btnBuild').textContent = L('建設','Build'); $('#btnUpg').textContent = L('アップグレード','Upgrades'); $('#btnMarket').textContent = L('市場','Market'); $('#btnArea').textContent = L('新エリア','New Areas');
+  $('#btnBuild').textContent = L('建設','Build'); $('#btnUpg').textContent = L('改良','Improve'); $('#btnMarket').textContent = L('市場','Market'); $('#btnArea').textContent = L('新エリア','New Areas');
   $('#shareBtn').textContent = L('シェア','Share'); $('#scoreBtn').textContent = L('スコア','Score');
   $('#moodLbl').textContent = L('幸福','Happiness');
   $('#tutH').textContent = L('チュートリアル','Tutorial'); $('#tutSkip').textContent = L('スキップ','Skip');
@@ -3689,7 +3726,6 @@ function herdLine(){
   return L('牛 ','Cows ')+S.herd.length+(full ? L('（搾れる '+full+'）',' ('+full+' ready)') : '')+'・'+'<span class="'+(n ? 'g' : 'r')+'">'+(n ? L('輪の草 ','Grass in ring ')+n : L('鐘を移そう','Move the bell'))+'</span>';
 }
 function renderTop(){
-  if (isFarm){ const fb = $('#farmBtn'); fb.hidden = false; fb.textContent = L('種をまく','Plant seeds'); fb.classList.toggle('pulse', season() !== 3 && (!S.stats.planted || fieldCount() < 4)); }
   if (isDairy){ const bb = $('#bellBtn'); bb.hidden = false; bb.textContent = L('鐘で放牧','Herd bell'); bb.classList.toggle('pulse', !!S.herd && !isNight() && !pastureAt(S.bell)); }
   $('#gold').textContent = fmt(S.gold);
   // 上のバーが何段になっても、その下に注文バー・回転ボタンを置く
@@ -3718,7 +3754,7 @@ function renderTop(){
     S.loans.map(Ln=>'<div class="mis">💰 '+L('返済','Repay')+' '+fmt(Ln.repay)+'G　Day'+Ln.due+'<div class="bars">'+tbar(Ln.start ?? now, Ln.due)+'</div></div>').join(''));
   // チュートリアル
   const tutEl = $('#tut');
-  document.querySelectorAll('.pulse:not(#farmBtn):not(#bellBtn)').forEach(e=>e.classList.remove('pulse'));
+  document.querySelectorAll('.pulse:not(#bellBtn)').forEach(e=>e.classList.remove('pulse'));
   if (S.tut >= 0 && TUT[S.tut]){
     let msg = N(TUT[S.tut].m);
     if (S.tut === 6 && countB('sawmill') && workerCount() >= housing()) msg = L('住む家が満員で雇えない！<b>住宅</b>を建てるか、木こり小屋の住民を<b>減らそう</b>。','No room to hire! Build a <b>House</b> or <b>remove</b> a worker from the camp.');
@@ -3729,9 +3765,10 @@ function renderTop(){
     tutEl.querySelector('.msg').innerHTML = L('<b>川を伸ばす</b>には、<b>湧き水か川をタップ</b>して揚水水車を上げよう（Lv5まで）。','To <b>extend the river</b>, <b>tap the spring or river</b> and upgrade the waterwheel (up to Lv5).');
   } else if (isFarm && !S.farmHintOff && !S.stats.planted){
     tutEl.hidden = false;
+    if (season() !== 3) $('#btnBuild').classList.add('pulse');
     tutEl.querySelector('.msg').innerHTML = season() === 3
       ? L('冬は種をまけない。<b>春になったら</b>、空いている地面をタップしよう。','No planting in winter. <b>When spring comes</b>, tap any open ground.')
-      : L('<b>空いている地面をタップ</b>すると、小麦・稲・かぼちゃの種をまける。<br>「種をまく」ボタンや、建設の「田畑」からでもOK。','<b>Tap any open ground</b> to plant wheat, rice or pumpkins.<br>The Plant seeds button and Build → Fields work too.');
+      : L('<b>空いている地面をタップ</b>すると、小麦・稲・かぼちゃの種をまける。<br>建設の「田畑」からでもOK。','<b>Tap any open ground</b> to plant wheat, rice or pumpkins.<br>Build → Fields works too.');
   } else tutEl.hidden = true;
 }
 function toast(msg, cls=''){
@@ -4067,8 +4104,8 @@ function showArrival(){
 }
 function farmGuide(){
   return '<p class="kv">'+L(
-    '<b>この島は水と四季で育てる</b><br>・<b>空いている地面をタップ</b>して種をまく（「種をまく」ボタンでも）<br>・<b>稲は川のとなり</b>、<b>小麦は乾いた土</b>、<b>かぼちゃは違う作物のとなり</b>が好き<br>・<b>湧き水か川をタップ</b>して揚水水車を上げると、<b>川が自分で伸びる</b>（Lv5まで）。夏は先の方が干上がる<br>・季節は2日ずつ。<b>冬は何も育たない</b>ので、秋に貯めて加工でしのぐ<br>・実った畑はタップか<b>農家</b>で刈り取る。目標は <b>'+fmt(P.goal)+'G</b>',
-    '<b>This island runs on water and seasons</b><br>• <b>Tap open ground</b> to plant (or use the Plant seeds button)<br>• <b>Rice likes the river</b>, <b>wheat likes dry soil</b>, <b>pumpkins like a different crop next door</b><br>• <b>Tap the spring or river</b> to upgrade the waterwheel and <b>the river grows by itself</b> (up to Lv5). Its far end dries up in summer<br>• Seasons last 2 days. <b>Nothing grows in winter</b>, so stock up in autumn and craft<br>• Tap ripe fields, or staff a <b>Farmhouse</b>. Goal: <b>'+fmt(P.goal)+'G</b>')+'</p>';
+    '<b>この島は水と四季で育てる</b><br>・<b>空いている地面をタップ</b>して種をまく（建設の「田畑」からでも）<br>・<b>稲は川のとなり</b>、<b>小麦は乾いた土</b>、<b>かぼちゃは違う作物のとなり</b>が好き<br>・<b>湧き水か川をタップ</b>して揚水水車を上げると、<b>川が自分で伸びる</b>（Lv5まで）。夏は先の方が干上がる<br>・<b>道になっている所の畑は踏まれて育ちが悪い</b>（種まき中は赤く見える）<br>・季節は2日ずつ。<b>冬は何も育たない</b>ので、秋に貯めて加工でしのぐ<br>・実った畑はタップか<b>農家</b>で刈り取る。目標は <b>'+fmt(P.goal)+'G</b>',
+    '<b>This island runs on water and seasons</b><br>• <b>Tap open ground</b> to plant (or use Build → Fields)<br>• <b>Rice likes the river</b>, <b>wheat likes dry soil</b>, <b>pumpkins like a different crop next door</b><br>• <b>Tap the spring or river</b> to upgrade the waterwheel and <b>the river grows by itself</b> (up to Lv5). Its far end dries up in summer<br>• <b>Crops on busy paths grow poorly</b> (shown red while planting)<br>• Seasons last 2 days. <b>Nothing grows in winter</b>, so stock up in autumn and craft<br>• Tap ripe fields, or staff a <b>Farmhouse</b>. Goal: <b>'+fmt(P.goal)+'G</b>')+'</p>';
 }
 function dairyGuide(){
   return '<p class="kv">'+L(
@@ -4120,7 +4157,7 @@ function frame(now){
       if (k > 0.75) g.scale.set(s*1.15, s*0.82, s*1.15); else { g.scale.setScalar(s); g.rotation.z = Math.sin(u.hit*60)*0.18*k; }
     } else { g.scale.setScalar(s); if (!(c.t==='b' && c.b.broken)) g.rotation.z = 0; }
     // 置き場所を選ぶあいだ、草木は低くなり、予定地の草木は隠れる
-    if (c.t === 'tree' || c.t === 'sapling'){ if (mode) g.scale.y *= 0.45; g.visible = !planned.has(i); }
+    if (c.t === 'tree' || c.t === 'sapling'){ if (c.crop) g.scale.y *= 0.4 + 0.6*trampleRate(i); if (mode) g.scale.y *= 0.45; g.visible = !planned.has(i); }
     if (c.t === 'b'){
       const b = c.b;
       if (u.scaffold) u.scaffold.visible = b.build > 0;
@@ -4210,6 +4247,7 @@ function frame(now){
   // マーカー・ホバー・置き場所プレビュー
   const mt = markerTarget();
   if (mt >= 0){ const p = wpos(mt); marker.visible = true; marker.position.set(p.x, 1.35 + Math.abs(Math.sin(elapsed*5))*0.2, p.z); } else marker.visible = false;
+  if (isFarm){ const key = (mode?.kind === 'tool' ? mode.tool : '') + (selCell >= 0); if (key !== updateFarm.key){ updateFarm.key = key; paintAccF = 1; } }
   hoverCell = mode && TOUCH ? pending : (mouseIn && !drag) ? pick() : -1;
   if (hoverCell >= 0){
     const hs = mode ? modeSize() : bSize(hoverCell), p = wpos(hoverCell), k = (hs-1)/2;
@@ -4260,7 +4298,7 @@ function visitURL(){
 function visitState(){
   const V = VISIT, s = newState(ISLAND);
   s.name = cleanName(V.name); s.day = s.airFirst = V.day; s.time = P.dayLen*P.dayFrac*0.4; s.tut = -1; s.seed = V.cells.reduce((a,c,i) => (a*31 + c.c + i) % 1000, 7) + 0.5;
-  s.upg.carry = V.upg & 3; s.upg.road = Math.min(2, V.upg >> 2 & 3); s.drive = V.upg >> 4 & 3; s.airLvl = V.upg >> 6;
+  s.upg.carry = V.upg & 3; s.upg.road = Math.min(2, V.upg >> 2 & 3); s.drive = Math.min(2, V.upg >> 4 & 3); s.driveV = 2; s.airLvl = V.upg >> 6;
   s.airport = !!(V.mode & 1); s.flags.skycow = !!(V.mode & 2); s.flags.jersey = !!(V.mode & 4); if (V.mode & 8) s.upg.dog = 1; s.upg.pump = Math.min(5, V.mode >> 4 & 7);
   const [x0,x1,z0,z1] = V.land; s.land = {x0,x1,z0,z1};
   s.cells = V.cells.map((c, i) => {
@@ -4527,9 +4565,11 @@ for (const k of ITEM_KEYS){ S.items[k] ??= 0; S.sat[k] ??= 1; S.stats.made[k] ??
 makeClouds();
 orderChips();
 const grazingIsNew = !VISIT && initHerd();
+if (S.driveV !== 2){ S.drive = [0,1,1,2][S.drive || 0]; S.driveV = 2; }          // 4段階だったころの経営方針
 if (isFarm){ S.upg.pump ??= 0; calcFlow(); }
 initWorld();
 if (isFarm && !VISIT) migrateRiver();
+if (isFarm) calcTraffic();
 spawnCritters();
 // 放牧が入る前から遊んでいる酪農の島には、遊び方を一度だけ知らせる
 if (grazingIsNew && !S.arrived && S.day > 1) eventQueue.push({result:true, img:'d_meadow', title:L('放牧がはじまった','Grazing begins'), text:dairyGuide()});
@@ -4547,6 +4587,7 @@ window.DTT = {get S(){return S;}, P, W, WH, place, hire, levelUp, sell, clickCel
   bench:(n=30)=>{const px=new Uint8Array(4);const gl=renderer.getContext();const t0=performance.now();for(let k=0;k<n;k++){renderer.setRenderTarget(rt);renderer.render(scene,cam);renderer.setRenderTarget(null);renderer.render(postScene,postCam);gl.readPixels(0,0,1,1,gl.RGBA,gl.UNSIGNED_BYTE,px);}return (performance.now()-t0)/n;},
   calcScore, totalScore, showScore,
   visitURL, showShare, get shareBlob(){return shareBlob;}, VISIT,
+  traffic, calcTraffic, trampleRate,
   useTool, toolWhy, growRate, season, refreshWater, isWet, CROPS, get waterLive(){return waterLive;},
   setBell, milkByHand, buyCow, cowCost, cowCap, pastureAt, isMud,
   festActive, showFestStill, get festHeard(){return festHeard;},
