@@ -1064,26 +1064,44 @@ function plan(w){
   if (starWatch()){ const a = Math.random()*Math.PI*2, r = 0.6 + Math.random()*0.9; return [...upIf(w), {k:'go', x:PLAZA.x + Math.cos(a)*r, z:PLAZA.z + Math.sin(a)*r}, {k:'dance', d:rnd(5,9), calm:true, star:true}]; }
   if (holidayNow()){ const land = S.cells.map((c,i)=>c.t==='void'||c.t==='b'||c.t==='occ'?-1:i).filter(i=>i>=0), p = wpos(land[Math.floor(Math.random()*land.length)]); return [...upIf(w), {k:'go', x:p.x + rnd(-.3,.3), z:p.z + rnd(-.3,.3)}, {k:'dance', d:rnd(2,4), calm:true}]; }
   if (offDuty(w)) return [...upIf(w), {k:'go', ...homePt(w), home:true}, {k:'sleep'}];
-  if (b.broken || b.build > 0) return [...upIf(w), {k:'go', ...bPt(w.bi,w)}, {k:'wait', d:1.5}];
+  if (b.broken || b.build > 0) return [...upIf(w), {k:'go', ...bPt(w.bi,w)}, {k:'wait', d:1.5, in:b.build <= 0}];
   if (w.job === 'haul') return planHaul(w);
   if (w.job === 'chop'){
-    if (S.day < S.flags.protectUntil || stTotal(b) >= stCap(b)) return [{k:'go', ...bPt(w.bi,w)}, {k:'wait', d:2}];
+    if (S.day < S.flags.protectUntil || stTotal(b) >= stCap(b)) return idleAt(w, 2);
     const tgt = findNearest('tree', w.bi);
-    if (tgt < 0) return [{k:'go', ...bPt(w.bi,w)}, {k:'wait', d:2}];
+    if (tgt < 0) return idleAt(w, 2);
     reserved[tgt] = w;
     const tp = wpos(tgt), dx = w.x - tp.x, dz = w.z - tp.z, Ln = Math.hypot(dx,dz) || 1;
     return [{k:'go', x:tp.x + dx/Ln*0.32, z:tp.z + dz/Ln*0.32}, {k:'work', cell:tgt, kind:'tree'}, {k:'go', ...bPt(w.bi,w)}, {k:'store'}];
   }
   if (w.job === 'quarry'){
-    if (stTotal(b) >= stCap(b)) return [...upIf(w), {k:'go', ...bPt(w.bi,w)}, {k:'wait', d:2}];
+    if (stTotal(b) >= stCap(b)) return [...upIf(w), ...idleAt(w, 2)];
     if (canDig()) return [...(w.under ? [] : [{k:'go', ...bPt(w.bi,w)}, {k:'down'}]), {k:'dig', t:0}];
     const tgt = findNearest('rock', w.bi);
-    if (tgt < 0) return [...upIf(w), {k:'go', ...bPt(w.bi,w)}, {k:'wait', d:3}];
+    if (tgt < 0) return [...upIf(w), ...idleAt(w, 3)];
     reserved[tgt] = w;
     const tp = wpos(tgt), dx = w.x - tp.x, dz = w.z - tp.z, Ln = Math.hypot(dx,dz) || 1;
     return [...upIf(w), {k:'go', x:tp.x + dx/Ln*0.34, z:tp.z + dz/Ln*0.34}, {k:'work', cell:tgt, kind:'rock'}, {k:'go', ...bPt(w.bi,w)}, {k:'store'}];
   }
-  return [{k:'go', ...bPt(w.bi,w)}, {k:'op', d:2}];
+  const door = bPt(w.bi, w), op = [{k:'go', ...door}, {k:'op', d:2}];
+  // ふだんは中で働き、たまに荷物を抱えて外へ用事に出る（用事中も働いている扱い）
+  if (Math.random() >= 0.14) return op;
+  const out = BUILD[b.type].out || BUILD[b.type].gen;
+  return [...op, {k:'go', ...outPt(w), shift:true, show:out}, {k:'wait', d:rnd(0.8,1.8), shift:true}, {k:'go', ...door, shift:true}];
+}
+// 手が空いた人は建物の中で待つ。たまに近所を歩く
+function idleAt(w, d){
+  const home = w.job === 'haul' ? whPt(w) : bPt(w.bi, w), r = [{k:'go', ...home}, {k:'wait', d, in:true}];
+  return Math.random() < 0.18 ? [...r, {k:'go', ...outPt(w)}, {k:'wait', d:rnd(0.8,1.8)}] : r;
+}
+// ちょっとした用事の行き先：となりの空きマスか、近所の建物の戸口
+function outPt(w){
+  const near = allB().filter(j => j !== w.bi && cheb(j, w.bi) <= 2);
+  if (near.length && Math.random() < 0.6) return bPt(near[Math.floor(Math.random()*near.length)], w);
+  const open = neigh4(w.bi).filter(j => ['grass','sapling'].includes(S.cells[j].t));
+  if (!open.length) return bPt(w.bi, w);
+  const p = wpos(open[Math.floor(Math.random()*open.length)]);
+  return {x:p.x + rnd(-.25,.25), z:p.z + rnd(-.25,.25)};
 }
 // 運搬係：できた物は「必要としている加工所」へ直接運ぶ。行き先がなければ市場へ
 function planHaul(w){
@@ -1105,7 +1123,7 @@ function planHaul(w){
       if (sc > bs){ bs = sc; best = {i, kind:'supply'}; }
     }
   }
-  if (!best) return [{k:'go', ...whPt(w)}, {k:'wait', d:1}];
+  if (!best) return idleAt(w, 1);
   haulRes[best.i] = w;
   if (best.kind === 'pick'){
     if (best.to === WH) return [{k:'go', ...bPt(best.i, w)}, {k:'take', i:best.i, it:best.it}, {k:'rel'}, {k:'go', ...whPt(w)}, {k:'dep'}];
@@ -1128,12 +1146,14 @@ function updateWorker(w, dt){
   if (!t.home && t.k !== 'sleep' && t.k !== 'dance' && !w.carry && offDuty(w) && !festActive() && !holidayNow() && !starWatch()){ release(w); w.tasks = []; return; }
   const cb = S.cells[w.bi]; if (cb.t !== 'b'){ w.tasks = []; return; }
   const b = cb.b;
+  // 建物の中にいるか（go は実際に歩きだしたときに外へ出る。その場への go で一瞬だけ見えることがないように）
+  if (t.k !== 'go') w.inside = t.k === 'op' || (t.k === 'wait' && !!t.in);
   switch (t.k){
     case 'go': {
       if (t.key === undefined){ t.key = routeKey(w.x, w.z, t.x, t.z); t.len = Math.hypot(t.x - w.x, t.z - w.z); }
       const dx = t.x - w.x, dz = t.z - w.z, Ln = Math.hypot(dx, dz), st = walkSpeed(w, t)*dt;
       if (Ln <= st){ w.x = t.x; w.z = t.z; w.tasks.shift(); }
-      else { w.x += dx/Ln*st; w.z += dz/Ln*st; w.face = Math.atan2(dx, dz); w.walk += dt*14; if (t.key) wearRoute(t.key, t.len, dt); }
+      else { w.inside = false; w.x += dx/Ln*st; w.z += dz/Ln*st; w.face = Math.atan2(dx, dz); w.walk += dt*14; if (t.key) wearRoute(t.key, t.len, dt); }
       break; }
     case 'wait': t.d -= dt; if (t.d <= 0) w.tasks.shift(); break;
     case 'op': t.d -= dt; w.work = true; w.t += dt; if (t.d <= 0) w.tasks.shift(); break;
@@ -1322,7 +1342,7 @@ function sim(dt){
     }
   }
   // 施設
-  const ops = {}; for (const w of workers) if (!w.sleep && w.job === 'proc' && w.tasks[0]?.k === 'op') ops[w.bi] = (ops[w.bi] || 0) + 1;
+  const ops = {}; for (const w of workers) if (!w.sleep && w.job === 'proc' && (w.tasks[0]?.k === 'op' || w.tasks[0]?.shift)) ops[w.bi] = (ops[w.bi] || 0) + 1;
   homeAcc += dt; if (homeAcc >= 2){ homeAcc = 0; assignHomes(); }
   if (S.nightOrder && !S.nightOrder.snap && S.nightOrder.day === S.day && isNight()) S.nightOrder.snap = {...S.stats.made};
   const canWork = workTime() && !festActive();
@@ -2667,7 +2687,7 @@ function frame(now){
       u.carry.visible = !!v.carry; if (v.carry) u.carry.material = MT(ITEMS.ore.c); continue;
     }
     m.scale.setScalar(1);
-    if (!w.sleep) m.visible = true;
+    m.visible = !w.sleep && !w.inside;
     if (!m.visible) continue;
     m.position.set(w.x, w.dance === 2 ? Math.abs(Math.sin(elapsed*8 + w.ox*20))*0.12 : 0, w.z);
     if (w.dance === 2) w.face += dt*4;
@@ -2676,7 +2696,8 @@ function frame(now){
     u.body.position.y = 0.13 + bob; u.head.position.y = 0.27 + bob; u.hat.position.y = 0.35 + bob; u.carry.position.y = 0.43 + bob;
     u.legL.position.z = moving ? Math.sin(w.walk)*0.035 : 0; u.legR.position.z = -u.legL.position.z;
     u.body.rotation.x = w.work ? Math.max(0, Math.sin(w.t*9))*0.6 : 0;
-    u.carry.visible = !!w.carry; if (w.carry) u.carry.material = MT(ITEMS[w.carry].c);
+    const held = w.carry || w.tasks[0]?.show;
+    u.carry.visible = !!held; if (held) u.carry.material = MT(ITEMS[held].c);
   }
   // 空のものたち
   for (const c of clouds){ const a = Math.atan2(c.position.z, c.position.x) + c.userData.v*dt*0.05, r = Math.hypot(c.position.x, c.position.z); c.position.x = Math.cos(a)*r; c.position.z = Math.sin(a)*r; }
