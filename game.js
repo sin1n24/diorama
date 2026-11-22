@@ -714,7 +714,7 @@ function makeBuilding(type, r=0.5, b=null){
       break; }
   }
   // 隣の建物とのあいだに隙間をあける（住民が通るのが見えるように）
-  const BS = type === 'house' ? 0.9 : (type === 'park' || type === 'fun') ? 1 : 0.8;
+  const BS = type === 'house' ? 0.9 : type === 'fun' ? 1.3 : type === 'park' ? 1 : 0.8;
   const inner = new THREE.Group(); inner.scale.setScalar(BS);
   while (g.children.length) inner.add(g.children[0]);
   g.add(inner); u.inner = inner;
@@ -786,7 +786,7 @@ function buildCost(type){
 const lvlCost = b => Math.round(BUILD[b.type].cost.g * 1.5 * Math.pow(1.8, b.lvl-1));
 function price(it){
   let m = S.sat[it]; const cap = S.satCap[it]; if (cap && S.day < cap.until) m = Math.min(m, cap.v);
-  const craft = S.flags.craft && (it === 'furn' || it === 'gear') ? 1.3 : 1;
+  const craft = (S.flags.craft && (it === 'furn' || it === 'gear') ? 1.3 : 1) * (S.flags.forest && (it === 'furn' || it === 'plank') ? 1.2 : 1);
   return ITEMS[it].p * m * craft;
 }
 function partnerAdj(i){ const d = BUILD[S.cells[i].b.type]; return !!d.partner && neigh8(i).some(j => isB(j, d.partner)); }
@@ -807,7 +807,7 @@ function moodBreakdown(){
   if (S.flags.sacred) Lst.push([L('聖なる岩山','Sacred rocks'), 8]);
   if (S.flags.craft) Lst.push([L('職人の誇り','Craft pride'), 4]);
   if (S.flags.steam) Lst.push([L('工場の煙','Factory smoke'), -8]);
-  const np = noisePairs(); if (np) Lst.push([L('工場の騒音','Factory noise')+'('+np+')', -3*np]);
+  const np = noisePairs(); if (np) Lst.push([L('工場の騒音','Factory noise')+'('+np+')', -Math.min(20, 3*np)]);
   const hl = Math.max(0, workerCount() - housing()); if (hl) Lst.push([L('家なし','Homeless')+'('+hl+')', -6*hl]);
   if (S.nightShift && isNight() && workerCount()) Lst.push([L('夜勤中','Night shift')+(countB('bath') ? L('（浴場で半分）',' (bath: half)') : ''), countB('bath') ? -6 : -12]);
   return Lst;
@@ -854,7 +854,9 @@ function place(type, i){
   S.cells[i] = {t:'b', r:Math.random(), b};
   setCellMesh(i); CM[i].userData.pop = 0.35; sfx('build'); shake(0.06);
   burst(wpos(i).x, 0.3, wpos(i).z, 'stone', 6);
-  assignLights(); return true;
+  assignLights();
+  if (type === 'fun' && countB('fun') === 1) eventQueue.push({result:true, img:'skyfair', title:L('空の遊園地、開園！','The Sky Fair opens!'), text:L('回転木馬がまわりはじめた。飛行船の観光客たちが、さっそく列をつくっている。レベルを上げると乗り物が増える。','The carousel starts to turn, and airship tourists are already lining up. Level it up for more rides.')});
+  return true;
 }
 function moveBuilding(from, to){
   if (from === to || canPlace(null, to) || S.gold < P.moveCost) return false;
@@ -936,7 +938,7 @@ function offDuty(w){
   if (!workTime()) return true;
   if (isNight() || (S.nightShift && S.meteorNight !== S.day)) return false;
   const h = hourOf(S.time); if (h < 15) return false;
-  const hp = homePt(w), wp = bPt(w.bi, w), walk = Math.hypot(hp.x - wp.x, hp.z - wp.z) / (P.walk * moodF() * 0.85) + 3;
+  const hp = homePt(w), wp = bPt(w.bi, w), walk = Math.hypot(hp.x - wp.x, hp.z - wp.z) / (P.walk * moodF() * 0.85) + (w.job === 'haul' ? 7 : 3);
   return (19.25 - h) * SEC_H < walk;
 }
 function findNearest(kind, from){
@@ -1134,6 +1136,8 @@ function clickCell(i){
 
 /* ---- 1日の区切り */
 function onDawn(){
+  S.yday = {}; for (const k of ITEM_KEYS) S.yday[k] = S.stats.made[k] - (S.madePrev?.[k] || 0);
+  S.madePrev = {...S.stats.made};
   S.day++;
   if (S.nightUsed){ S.stats.nightShifts++; S.nsStreak++; } else S.nsStreak = 0;
   S.nightUsed = false;
@@ -1174,7 +1178,7 @@ function onDawn(){
   if (NO && S.day > NO.day){
     S.nightShift = NO.prev; S.nightOrder = null;
     let n = 0, v = 0; if (NO.snap) for (const k of ['plank','furn','ingot','gear']){ const d = S.stats.made[k] - (NO.snap[k] || 0); n += d; v += d * ITEMS[k].p; }
-    const bonus = Math.round(v * 0.6); S.gold += bonus; S.stats.earned += bonus;
+    const bonus = Math.round(v * 0.45); S.gold += bonus; S.stats.earned += bonus;
     eventQueue.push({result:true, img:'nightorder_ok', title:L('特急便、出発！','The dawn express departs!'), text: n ? L('夜のうちに作った加工品 '+n+'個を積みこんだ。<b>ボーナス +'+fmt(bonus)+'G</b>（品物は市場に残る）', n+' crafted goods made overnight were loaded. <b>Bonus +'+fmt(bonus)+'G</b> (you keep the goods)') : L('残念、夜のあいだに加工品はできなかった……。','Sadly, nothing was crafted overnight…')});
   }
   if (S.airport){
@@ -1274,7 +1278,8 @@ let eventQueue = []; const queuedIds = {};
 function estPerDay(it){
   let r = 0; for (const i of allB()){ const b = S.cells[i].b, d = BUILD[b.type]; if (d.out === it && b.workers) r += P.dayLen*P.dayFrac / d.time * speedMult(i); }
   if (it === 'log') r = allB('camp').reduce((a,i)=>a + S.cells[i].b.workers*16, 0);
-  return r;
+  const y = S.yday?.[it];          // 前日の実績があればそれを使う（理論値は材料不足を考えないので甘い）
+  return y > 0 ? Math.min(y, r || y) : r * 0.5;
 }
 const EVENTS = [
   {id:'vein', fixed:3, make:()=>({img:'vein', title:L('岩山に鉄の鉱脈！','An iron vein in the rocks!'), text:L('調査隊が島の地下に大きな鉄の鉱脈を見つけた。一方、長老は「岩山は島の守り神じゃ」と首を振る。','Surveyors found a big iron vein under the island. But the elder shakes his head: "The rocks protect our island."'), opts:[
@@ -1288,12 +1293,12 @@ const EVENTS = [
   {id:'policy', fixed:5, make:()=>({img:'policy', title:L('島の進む道','The island’s path'), text:L('島が大きくなり、住民集会が開かれた。これからのやり方を決めよう。この決定はずっと続く。','The island has grown and a town meeting is held. Choose how it will grow. This lasts forever.'), opts:[
     {l:L('蒸気機関を入れる','Bring in steam engines'), d:L('加工の速度 +35%。ただし煙で幸福 -8、木の自然再生が半分に','Crafting +35%. Smoke: happiness -8, tree regrowth halved'), f:()=>{ S.flags.steam = true; story('蒸気機関を導入した','Brought in steam engines'); return {img:'steam', title:L('蒸気機関、始動！','Steam engines roar!'), text:L('もくもくと煙が上がり、歯車がうなる。','Smoke billows and gears hum.')}; }},
     {l:L('職人の誇りを守る','Keep the craft pride'), d:L('高級家具・歯車の売値 +30%、幸福 +4','Furniture & gears sell +30%, happiness +4'), f:()=>{ S.flags.craft = true; story('職人の道を選んだ','Chose the way of craft'); return {img:'craft', title:L('職人の誇り','Craft pride'), text:L('ひとつひとつ、ていねいに。この島の品は本土で高く売れるようになった。','Carefully, one by one. The island’s goods now fetch a high price.')}; }},
-    {l:L('森と共に生きる','Live with the forest'), d:L('木の再生・植林 ×2、木による幸福 ×1.5。加工の速度 -10%','Regrowth & planting x2, tree happiness x1.5. Crafting -10%'), f:()=>{ S.flags.forest = true; story('森と共に生きる道を選んだ','Chose to live with the forest'); return {img:'forest', title:L('森と共に','With the forest'), text:L('苗木を植え、森を育てる。小鳥やリスが戻ってきた。','Saplings are planted and birds return to the island.')}; }},
+    {l:L('森と共に生きる','Live with the forest'), d:L('木の再生・植林 ×2、木による幸福 ×1.5、板材・家具の売値 +20%。加工の速度 -10%','Regrowth & planting x2, tree happiness x1.5, planks & furniture sell +20%. Crafting -10%'), f:()=>{ S.flags.forest = true; story('森と共に生きる道を選んだ','Chose to live with the forest'); return {img:'forest', title:L('森と共に','With the forest'), text:L('苗木を植え、森を育てる。小鳥やリスが戻ってきた。','Saplings are planted and birds return to the island.')}; }},
   ]})},
   {id:'contract', w:3, cond:()=>S.contracts.length < 2, make:()=>{
     const it = countB('workshop') ? 'furn' : countB('sawmill') ? 'plank' : 'log';
-    const est = Math.max(3, estPerDay(it)), need = Math.max(5, Math.round(est * rnd(1.1, 2.1)));
-    const mult = Math.round(rnd(1.4, 2.8)*10)/10, reward = Math.round(need * ITEMS[it].p * mult), penalty = Math.round(need * ITEMS[it].p * rnd(0.5, 1.1));
+    const est = Math.max(3, estPerDay(it)), need = Math.max(5, Math.round(est * rnd(1.0, 1.8)));
+    const mult = Math.round(rnd(1.4, 2.8)*10)/10, reward = Math.round(need * ITEMS[it].p * mult), penalty = Math.round(need * ITEMS[it].p * rnd(0.4, 0.9));
     const tag = mult >= 2.4 ? L('（かなりお得！）',' (a great deal!)') : mult <= 1.7 ? L('（ちょっと渋い）',' (a bit stingy)') : '';
     return {img:'contract', title:L('大口の注文','A big order'), text:L('本土の商会から「'+N(ITEMS[it].n)+'を'+need+'個、2日後の朝までに」と注文が来た。報酬は相場の約'+mult+'倍'+tag+'。今のペースは1日およそ'+Math.round(est)+'個。', 'A mainland guild wants '+need+' '+N(ITEMS[it].n)+' within 2 days, paying about '+mult+'× market'+tag+'. You make about '+Math.round(est)+' a day.'), opts:[
       {l:L('引き受ける','Accept'), d:L('市場に入った分から自動で納品。成功で '+fmt(reward)+'G。失敗すると違約金 '+fmt(penalty)+'G と幸福 -5', 'Goods reaching the market are delivered automatically. Success: '+fmt(reward)+'G. Failure: '+fmt(penalty)+'G penalty, happiness -5'),
@@ -1426,8 +1431,8 @@ const EVENTS = [
         return {img:'unrest', title:L('しぶしぶ仕事へ','Grudgingly back to work'), text:L('ぶつぶつ言いながらも、みんな持ち場に戻った。','Muttering, everyone went back to work.')}; }},
     ]};
   }},
-  {id:'nightorder', w:2.5, cond:()=>!S.nightShift && !S.nightOrder && S.day >= 4 && allB().some(i=>BUILD[S.cells[i].b.type]?.in && S.cells[i].b.workers), make:()=>({img:'nightorder', title:L('夜明けの特急便','The dawn express'), text:L('商人が「明日の朝いちばんの気球に、夜のうちに作った品を積みたい。いつもの1.6倍で買うよ」と言っている。','A merchant says: "Load what you craft tonight on tomorrow’s first balloon. I’ll pay 1.6× the usual."'), opts:[
-    {l:L('今夜は夜勤！','Night shift tonight!'), d:L('今夜だけ夜勤ON。夜のあいだに作った加工品の値段の6割がボーナスで入る（品物は手元に残る）','Night shift ON just for tonight. Bonus: 60% of the value of goods crafted overnight (you keep the goods)'), f:()=>{
+  {id:'nightorder', w:1.5, cond:()=>!S.nightShift && !S.nightOrder && S.day >= 4 && allB().some(i=>BUILD[S.cells[i].b.type]?.in && S.cells[i].b.workers), make:()=>({img:'nightorder', title:L('夜明けの特急便','The dawn express'), text:L('商人が「明日の朝いちばんの気球に、夜のうちに作った品を積みたい。いつもの1.45倍で買うよ」と言っている。','A merchant says: "Load what you craft tonight on tomorrow’s first balloon. I’ll pay 1.45× the usual."'), opts:[
+    {l:L('今夜は夜勤！','Night shift tonight!'), d:L('今夜だけ夜勤ON。夜のあいだに作った加工品の値段の45%がボーナスで入る（品物は手元に残る）','Night shift ON just for tonight. Bonus: 45% of the value of goods crafted overnight (you keep the goods)'), f:()=>{
       S.nightOrder = {day:S.day, prev:S.nightShift, snap:null}; S.nightShift = true; story('夜明けの特急便に挑んだ','Took on the dawn express');
       return {img:'nightorder', title:L('今夜は夜なべ','Working through the night'), text:L('ランタンを灯して、夜通し機械を回す。浴場があると疲れが軽くなる。','Lanterns lit, the machines will run all night. A bathhouse eases the fatigue.')}; }},
     {l:L('夜はしっかり休む','Rest at night'), d:L('幸福 +2','Happiness +2'), f:()=>{ addMood(2); }},
@@ -2191,7 +2196,7 @@ function urgentCells(){
 }
 function updateAlerts(){
   const u = urgentCells();
-  while (alertMarks.length < u.length){ const m = new THREE.Mesh(G.cone4, alertMat); m.scale.set(0.13,0.22,0.13); m.rotation.x = Math.PI; scene.add(m); alertMarks.push(m); }
+  while (alertMarks.length < u.length){ const m = new THREE.Mesh(G.cone4, alertMat); m.scale.set(0.17,0.3,0.17); m.rotation.x = Math.PI; scene.add(m); alertMarks.push(m); }
   alertMarks.forEach((m, k) => { const i = u[k]; m.visible = i !== undefined; if (!m.visible) return; const p = wpos(i); m.position.set(p.x, 1.2 + Math.abs(Math.sin(elapsed*5 + k))*0.18, p.z); m.rotation.y = elapsed*2; });
 }
 function markerTarget(){
@@ -2460,4 +2465,4 @@ window.DTT = {get S(){return S;}, P, W, WH, place, hire, levelUp, sell, clickCel
   skipTut:()=>{S.tut=-1;$('#tut').hidden=true;}, reset:resetGame,
   screenOf:(i)=>{const p=wpos(i); return toScreen(p.x,0,p.z);},
   bench:(n=30)=>{const px=new Uint8Array(4);const gl=renderer.getContext();const t0=performance.now();for(let k=0;k<n;k++){renderer.setRenderTarget(rt);renderer.render(scene,cam);renderer.setRenderTarget(null);renderer.render(postScene,postCam);gl.readPixels(0,0,1,1,gl.RGBA,gl.UNSIGNED_BYTE,px);}return (performance.now()-t0)/n;},
-  get trade(){return trade;}, camS, buildDock, buildAirship, updateTiles, get mode(){return mode;}, setLang:(l)=>{SET.lang=l; applySettings(); renderTop();}};
+  get trade(){return trade;}, camS, buildDock, buildAirship, updateTiles, moodBreakdown, offDuty, whale, get mode(){return mode;}, setLang:(l)=>{SET.lang=l; applySettings(); renderTop();}};
