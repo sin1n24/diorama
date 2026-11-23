@@ -1,3 +1,4 @@
 promo/
 *.webm
 .playwright-mcp/
+DELETE/

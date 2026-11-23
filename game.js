@@ -2730,7 +2730,7 @@ function onDawn(){
     addMood(12);
     const gift = Math.random() < 0.5 ? Math.round(rnd(200, 600)) : 0;
     if (gift){ S.gold += gift; eventQueue.push({result:true, img:'meteor_wish', title:L('願いがかなった！','A wish came true!'), text:L('朝、広場に光る「流れ星のかけら」が落ちていた。<b>+'+fmt(gift)+'G・幸福 +12</b>','A glowing star shard lay in the square at dawn. <b>+'+fmt(gift)+'G, happiness +12</b>')}); }
-    else eventQueue.push({result:true, img:'meteor', title:L('星降る夜のあとで','After the starry night'), text:L('願いはひみつ。でも、みんな晴れやかな顔をしている。<b>幸福 +12</b>','The wishes are secret, but everyone looks happy. <b>Happiness +12</b>')});
+    else eventQueue.push({result:true, img:'meteor_after', title:L('星降る夜のあとで','After the starry night'), text:L('願いはひみつ。でも、みんな晴れやかな顔をしている。<b>幸福 +12</b>','The wishes are secret, but everyone looks happy. <b>Happiness +12</b>')});
   }
   if (S.drive){
     S.stats.driveDays = (S.stats.driveDays || 0) + S.drive*1.5;
@@ -2738,7 +2738,7 @@ function onDawn(){
     if (S.drive === 2 && c.length && Math.random() < 0.15){
       const i = c[Math.floor(Math.random()*c.length)], nm = BUILD[S.cells[i].b.type].n;
       S.cells[i].b.broken = true; if (CM[i]) CM[i].rotation.z = 0.12;
-      eventQueue.push({result:true, img:'storm_lose', title:L('働かせすぎて故障！','Worked to breaking point!'), text:L('休みなく回し続けた'+nm[0]+'が壊れた。修理するまで止まる。','The '+nm[1]+' broke down from overwork. It stops until repaired.')});
+      eventQueue.push({result:true, img:'breakdown', title:L('働かせすぎて故障！','Worked to breaking point!'), text:L('休みなく回し続けた'+nm[0]+'が壊れた。修理するまで止まる。','The '+nm[1]+' broke down from overwork. It stops until repaired.')});
       story(nm[0]+'を働かせすぎて壊した', 'Overworked the '+nm[1]+' until it broke');
     }
   }
@@ -2795,7 +2795,7 @@ function sim(dt){
     if (b.build > 0){ b.build = Math.max(0, b.build - dt); if (!b.build){ if (CM[i]) CM[i].userData.pop = 0.3; sfx('hire');
       if (b.type === 'fun' && S.funPending){          // 絵は完成してから
         S.funPending = false; S.funOpened = 1;
-        setTimeout(() => eventQueue.push({result:true, img:ISLAND === 'sky' ? 'skyfair' : '@shot', title:L(BUILD.fun.n[0]+'、開園！', 'Now open: '+BUILD.fun.n[1]), text:N(FLV.open)}), 900);
+        setTimeout(() => eventQueue.push({result:true, img:ISLAND === 'sky' ? 'skyfair' : 'fair', title:L(BUILD.fun.n[0]+'、開園！', 'Now open: '+BUILD.fun.n[1]), text:N(FLV.open)}), 900);
       } } continue; }
     // 満杯が長く続いたときだけ注意を出す（運搬が一時的に追いつかないだけなら出さない）
     if (staffed(d)) b._fullT = stTotal(b) >= stCap(b) ? (b._fullT || 0) + dt : 0;
@@ -2908,41 +2908,41 @@ const EVENTS = [
   {id:'seed', fixed:3, isl:'farm', make:()=>({img:'f_seed', title:L('どの種を受け継ぐ？','Which seeds to pass down?'), text:L('長老が古い種つぼを3つ並べた。「受け継げるのはひとつだけじゃ」。この決定はずっと続く。','The elder lays out three old seed jars: "Only one can be passed down." This lasts forever.'), opts:[
     {l:L('古代米','Ancient rice'), d:L('稲の育ち +30%','Rice grows +30% faster'), f:()=>{ S.flags.heirloom = true; story('古代米を受け継いだ','Inherited the ancient rice'); return {img:'f_rice', title:L('水面に揺れる稲','Rice upon the water'), text:L('赤みをおびた稲が、水ぎわに並んだ。','Reddish rice now lines the river.')}; }},
     {l:L('香り高いそば','Fragrant buckwheat'), d:L('そば粉・手打ちそばの売値 +25%','Soba flour & soba sell +25%'), f:()=>{ S.flags.miller = true; story('香り高いそばを受け継いだ','Inherited fragrant buckwheat'); return {img:'f_wheat', title:L('白いそばの花','White buckwheat flowers'), text:L('香りのよいそばの実が、石臼へ運ばれていく。','Fragrant buckwheat heads for the millstones.')}; }},
-    {l:L('寄り添う種','Companion seeds'), d:L('大豆の「となりボーナス」が2倍。幸福 +6（ずっと）','Soybean companion bonus doubled. Happiness +6 forever'), f:()=>{ S.flags.sisters = true; story('寄り添う種を受け継いだ','Inherited the companion seeds'); return {img:'f_field', title:L('寄り添う畑','Companion fields'), text:L('違う作物どうしが、助け合って育ちはじめた。','Different crops begin to help one another grow.')}; }},
+    {l:L('寄り添う種','Companion seeds'), d:L('大豆の「となりボーナス」が2倍。幸福 +6（ずっと）','Soybean companion bonus doubled. Happiness +6 forever'), f:()=>{ S.flags.sisters = true; story('寄り添う種を受け継いだ','Inherited the companion seeds'); return {img:'companion', title:L('寄り添う畑','Companion fields'), text:L('違う作物どうしが、助け合って育ちはじめた。','Different crops begin to help one another grow.')}; }},
   ]})},
   {id:'sparrow', w:2.5, isl:'farm', cond:()=>S.cells.filter(c=>c.t==='tree').length >= 3, make:()=>{
     const cost = 60 + 12*S.day, n = Math.ceil(S.cells.filter(c=>c.t==='tree').length/2);
     return {img:'f_sparrow', title:L('スズメの大群','A cloud of sparrows'), text:L('実った田畑を、スズメの大群がねらっている。','A cloud of sparrows has its eyes on the ripe fields.'), opts:[
       {l:L('かかしを立てる（'+fmt(cost)+'G）','Put up scarecrows ('+fmt(cost)+'G)'), d:L('確実に守れる','The crops are safe'), dis:()=>S.gold < cost, f:()=>{ S.gold -= cost; }},
       {l:L('みんなで追い払う','Chase them off together'), d:L('50%：追い払って幸福 +6／50%：実った田畑の半分（'+n+'枚）が食べられ、育て直し','50%: success, happiness +6 / 50%: half the ripe fields ('+n+') are eaten and must regrow'), f:()=>{
-        if (Math.random() < 0.5){ addMood(6); story('スズメの大群を追い払った','Chased off the sparrows'); return {img:'f_field', title:L('追い払った！','Chased off!'), text:L('鍋をたたいて走り回り、田畑は無事だった。<b>幸福 +6</b>','Banging pots and running about, they saved the fields. <b>Happiness +6</b>')}; }
+        if (Math.random() < 0.5){ addMood(6); story('スズメの大群を追い払った','Chased off the sparrows'); return {img:'sparrow_win', title:L('追い払った！','Chased off!'), text:L('鍋をたたいて走り回り、田畑は無事だった。<b>幸福 +6</b>','Banging pots and running about, they saved the fields. <b>Happiness +6</b>')}; }
         const hit = S.cells.map((c,i)=>c.t==='tree'?i:-1).filter(i=>i>=0).sort(()=>Math.random()-.5).slice(0, n);
         for (const i of hit){ const c = S.cells[i]; S.cells[i] = c.crop ? {t:'sapling', crop:c.crop, g:0.25, r:c.r} : {t:'grass', r:c.r}; setCellMesh(i); }
         story('スズメに田畑を食べられた','Lost fields to the sparrows');
-        return {img:'f_sparrow', title:L('食べられた…','Eaten…'), text:L('田畑 '+hit.length+'枚の実りが食べられてしまった。','The sparrows ate '+hit.length+' fields of crops.')}; }},
+        return {img:'sparrow_lose', title:L('食べられた…','Eaten…'), text:L('田畑 '+hit.length+'枚の実りが食べられてしまった。','The sparrows ate '+hit.length+' fields of crops.')}; }},
     ]};
   }},
   // ---- 酪農の島だけの相談ごと
   {id:'breed', fixed:3, isl:'dairy', make:()=>({img:'d_breed', title:L('どの牛を育てる？','Which cows to raise?'), text:L('本土の牧場主が「この島に合う牛を選んでおくれ」と、3種類の牛を連れてきた。この決定はずっと続く。','A mainland rancher brought three kinds of cows: "Pick the ones that suit your island." This lasts forever.'), opts:[
     {l:L('ホルスタイン','Holsteins'), d:L('たくさん乳を出す。1頭から搾れる乳 +30%','Lots of milk. +30% milk from every cow'), f:()=>{ S.flags.holstein = true; story('ホルスタインを育てると決めた','Chose Holstein cows'); return {img:'d_holstein', title:L('白黒の大群','A black-and-white herd'), text:L('大きなホルスタインたちが、さっそく牛舎の前に並んだ。','Big Holsteins are already lining up at the barns.')}; }},
     {l:L('ジャージー','Jerseys'), d:L('濃くておいしい乳。バター・チーズ・熟成チーズの売値 +25%','Rich, tasty milk. Butter, cheese & aged cheese sell +25%'), f:()=>{ S.flags.jersey = true; story('ジャージー牛を迎えた','Welcomed Jersey cows'); return {img:'d_jersey', title:L('こがね色のミルク','Golden milk'), text:L('ジャージー牛の乳は、ほんのり黄色くて甘い。','Jersey milk is faintly golden and sweet.')}; }},
-    {l:L('島の空牛（そらうし）','The island’s sky-cows'), d:L('昔から島にいる、ふわふわの牛。幸福 +6（ずっと）、牧草の再生 ×1.5、泥地になりにくい','Fluffy cows native to the island. Happiness +6 forever, grass regrowth x1.5, pasture resists turning to mud'), f:()=>{ S.flags.skycow = true; story('島の空牛を守ると決めた','Vowed to keep the native sky-cows'); return {img:'d_meadow', title:L('ふわふわの空牛','Fluffy sky-cows'), text:L('雲のような毛並みの空牛たちが、うれしそうに草原を跳ねまわる。','Cloud-fleeced sky-cows bounce happily across the meadow.')}; }},
+    {l:L('島の空牛（そらうし）','The island’s sky-cows'), d:L('昔から島にいる、ふわふわの牛。幸福 +6（ずっと）、牧草の再生 ×1.5、泥地になりにくい','Fluffy cows native to the island. Happiness +6 forever, grass regrowth x1.5, pasture resists turning to mud'), f:()=>{ S.flags.skycow = true; story('島の空牛を守ると決めた','Vowed to keep the native sky-cows'); return {img:'skycow', title:L('ふわふわの空牛','Fluffy sky-cows'), text:L('雲のような毛並みの空牛たちが、うれしそうに草原を跳ねまわる。','Cloud-fleeced sky-cows bounce happily across the meadow.')}; }},
   ]})},
   {id:'calf', w:2, isl:'dairy', cond:()=>countB('barn') && S.day >= 4, make:()=>{
     const price = 300 + 40*S.day, i = allB('barn').sort((a,b)=>S.cells[a].b.lvl - S.cells[b].b.lvl)[0];
     return {img:'d_calf', title:L('子牛が生まれた！','A calf is born!'), text:L('夜明け前、牛舎で元気な子牛が生まれた。本土の牧場が「ぜひ譲ってほしい」と言ってきている。','Before dawn a healthy calf was born in the barn. A mainland ranch wants to buy it.'), opts:[
-      {l:L('名前をつけて島で育てる','Name it and raise it here'), d:L('牛が1頭増える。幸福 +5','One more cow. Happiness +5'), f:()=>{ const nc = S.herd.length < COW_NAMES.length ? newCow(isB(i, 'barn') ? i : bellList[0] ?? WH) : starCow(); addMood(5); story('子牛に名前をつけて育てた','Named and raised a calf'); return {img:'d_calf', title:L('島の新しい仲間','A new islander'), text:L('子牛は「'+COW_NAMES[nc.name][0]+'」と名づけられ、みんなの人気者になった。','The calf was named “'+COW_NAMES[nc.name][1]+'” and became everyone’s favorite.')}; }},
+      {l:L('名前をつけて島で育てる','Name it and raise it here'), d:L('牛が1頭増える。幸福 +5','One more cow. Happiness +5'), f:()=>{ const nc = S.herd.length < COW_NAMES.length ? newCow(isB(i, 'barn') ? i : bellList[0] ?? WH) : starCow(); addMood(5); story('子牛に名前をつけて育てた','Named and raised a calf'); return {img:'calf_keep', title:L('島の新しい仲間','A new islander'), text:L('子牛は「'+COW_NAMES[nc.name][0]+'」と名づけられ、みんなの人気者になった。','The calf was named “'+COW_NAMES[nc.name][1]+'” and became everyone’s favorite.')}; }},
       {l:L('本土の牧場に譲る（+'+fmt(price)+'G）','Sell it to the mainland (+'+fmt(price)+'G)'), d:L('お金が入る。幸福 -3','You get the money. Happiness -3'), f:()=>{ S.gold += price; S.stats.earned += price; addMood(-3); }},
     ]};
   }},
   {id:'tasting', w:1.5, isl:'dairy', cond:()=>S.stats.made.cheese + S.stats.made.butter >= 10, make:()=>{
     const it = S.stats.made.cheese >= 5 ? 'cheese' : 'butter', nm = N(ITEMS[it].n);
-    return {img:'contract', title:L('旅の食通がやってきた','A traveling gourmet'), text:L('本土で有名な食通が「この島の'+nm+'を5個、試させてもらえないか」と言っている。評判しだいで値段が大きく動きそうだ。','A famous mainland gourmet asks to taste 5 of your '+nm+'. The review could move prices a lot.'), opts:[
+    return {img:'tasting', title:L('旅の食通がやってきた','A traveling gourmet'), text:L('本土で有名な食通が「この島の'+nm+'を5個、試させてもらえないか」と言っている。評判しだいで値段が大きく動きそうだ。','A famous mainland gourmet asks to taste 5 of your '+nm+'. The review could move prices a lot.'), opts:[
       {l:L(nm+'を5個ふるまう','Serve 5 '+nm), d:L('60%：絶賛され、'+nm+'の相場が150%に・幸福 +5／40%：酷評され、3日間 '+nm+'の売値が最大70%に','60%: rave review, '+nm+' price to 150%, happiness +5 / 40%: harsh review, '+nm+' sells at most 70% for 3 days'), dis:()=>S.items[it] < 5, f:()=>{
         S.items[it] -= 5;
-        if (Math.random() < 0.6){ S.sat[it] = 1.5; addMood(5); story('食通に'+ITEMS[it].n[0]+'を絶賛された','A gourmet raved about the '+ITEMS[it].n[1]); return {img:'contract_ok', title:L('「すばらしい！」','“Magnificent!”'), text:L('食通は目を閉じて、ゆっくりうなずいた。本土の新聞に大きく載り、'+nm+'の値段が上がった。<b>相場150%・幸福 +5</b>','The gourmet closed their eyes and nodded slowly. The mainland papers ran the story. <b>Price 150%, happiness +5</b>')}; }
+        if (Math.random() < 0.6){ S.sat[it] = 1.5; addMood(5); story('食通に'+ITEMS[it].n[0]+'を絶賛された','A gourmet raved about the '+ITEMS[it].n[1]); return {img:'tasting_ok', title:L('「すばらしい！」','“Magnificent!”'), text:L('食通は目を閉じて、ゆっくりうなずいた。本土の新聞に大きく載り、'+nm+'の値段が上がった。<b>相場150%・幸福 +5</b>','The gourmet closed their eyes and nodded slowly. The mainland papers ran the story. <b>Price 150%, happiness +5</b>')}; }
         S.satCap[it] = {v:0.7, until:S.day+3}; addMood(-3); story('食通に酷評された','A gourmet panned the island');
-        return {img:'contract_fail', title:L('「……ふむ」','“…Hmm.”'), text:L('食通は首をかしげて帰っていった。しばらく'+nm+'が売れにくくなりそうだ。<b>3日間 売値最大70%</b>','The gourmet tilted their head and left. '+nm+' won’t sell well for a while. <b>At most 70% for 3 days</b>')}; }},
+        return {img:'tasting_ng', title:L('「……ふむ」','“…Hmm.”'), text:L('食通は首をかしげて帰っていった。しばらく'+nm+'が売れにくくなりそうだ。<b>3日間 売値最大70%</b>','The gourmet tilted their head and left. '+nm+' won’t sell well for a while. <b>At most 70% for 3 days</b>')}; }},
       {l:L('丁重に断る','Politely decline'), d:L('何も起きない','Nothing happens'), f:()=>{}},
     ]};
   }},
@@ -2992,14 +2992,14 @@ const EVENTS = [
     ]};
   }},
   {id:'protect', w:3, isl:'sky', cond:()=>treeCount() < 12 && !S.flags.forest && S.day >= S.flags.protectUntil && countB('camp'), make:()=>({img:'protect', title:L('森が減っている','The forest is shrinking'), text:L('木が '+treeCount()+' 本まで減った。森の保護団体が「2日間だけ伐採を休んで」と頼んできた。','Only '+treeCount()+' trees left. Forest keepers ask you to stop logging for 2 days.'), opts:[
-    {l:L('約束する','Promise'), d:L('2日間、木こり小屋が休む。木の再生 ×3、助成金 +250G、幸福 +8','Lumber camps rest 2 days. Regrowth x3, grant +250G, happiness +8'), f:()=>{ S.flags.protectUntil = S.day + 2; S.gold += 250; addMood(8); story('森を休ませる約束をした','Let the forest rest'); return {img:'forest', title:L('森を休ませる','Resting the forest'), text:L('2日間、斧の音が止む。若木がぐんぐん伸びていく。','For 2 days the axes fall silent and saplings shoot up.')}; }},
+    {l:L('約束する','Promise'), d:L('2日間、木こり小屋が休む。木の再生 ×3、助成金 +250G、幸福 +8','Lumber camps rest 2 days. Regrowth x3, grant +250G, happiness +8'), f:()=>{ S.flags.protectUntil = S.day + 2; S.gold += 250; addMood(8); story('森を休ませる約束をした','Let the forest rest'); return {img:'rest_forest', title:L('森を休ませる','Resting the forest'), text:L('2日間、斧の音が止む。若木がぐんぐん伸びていく。','For 2 days the axes fall silent and saplings shoot up.')}; }},
     {l:L('断る','Refuse'), d:L('伐採は続く。幸福 -10','Keep logging. Happiness -10'), f:()=>{ addMood(-10); story('森の保護団体の頼みを断った','Refused the forest keepers'); }},
   ]})},
   {id:'tired', w:5, cond:()=>S.nsStreak >= 2, make:()=>({img:'tired', title:L('みんなヘトヘトだ','Everyone is exhausted'), text:L('夜勤が続いて住民がフラフラだ。「今日1日だけ休ませてほしい」','Night after night of work. "Please, just one day off."'), opts:[
     {l:L('今日は休日にする','Make today a holiday'), d:L('今日は誰も働かない。幸福 +22','No work today. Happiness +22'), f:()=>{ S.flags.holidayDay = S.day; addMood(22); S.nsStreak = 0; S.stats.holidays++; story('Day'+S.day+'を島の休日にした','Made day '+S.day+' a holiday'); return {img:'holiday', title:L('島の休日','Island holiday'), text:L('ピクニックに昼寝、凧あげ。今日はみんな思い思いに過ごす。','Picnics, naps and kites. Everyone relaxes today.')}; }},
     {l:L('却下する','Refuse'), d:L('幸福 -10。40%で住民が1人去る','Happiness -10. 40%: a resident leaves'), f:()=>{ addMood(-10); story('休みの願いを却下した','Refused a day off');
-      if (Math.random() < 0.4 && workers.length){ removeWorker(workers[0].bi); S.stats.quits++; return {img:'leave', title:L('住民が島を去った…','A resident left…'), text:L('荷物をまとめた住民が、気球に乗って島を離れていった。','A resident packed up and left on a balloon.')}; }
-      return {img:'tired', title:L('しぶしぶ仕事へ','Back to work, reluctantly'), text:L('みんな目をこすりながら、持ち場へ戻っていった。','Rubbing their eyes, everyone went back to work.')}; }},
+      if (Math.random() < 0.4 && workers.length){ removeWorker(workers[0].bi); S.stats.quits++; return {img:'quit', title:L('住民が島を去った…','A resident left…'), text:L('荷物をまとめた住民が、気球に乗って島を離れていった。','A resident packed up and left on a balloon.')}; }
+      return {img:'tired_go', title:L('しぶしぶ仕事へ','Back to work, reluctantly'), text:L('みんな目をこすりながら、持ち場へ戻っていった。','Rubbing their eyes, everyone went back to work.')}; }},
   ]})},
   {id:'artisan', w:1.5, cond:()=>allB().some(i=>BUILD[S.cells[i].b.type]?.in && S.cells[i].b.lvl < 5), make:()=>{
     const c = allB().filter(i=>BUILD[S.cells[i].b.type]?.in && S.cells[i].b.lvl < 5); const i = c[Math.floor(Math.random()*c.length)];
@@ -3055,7 +3055,7 @@ const EVENTS = [
     {l:L(N(ITEMS[ISL.mid].n)+'10個と交換','Trade 10 '+N(ITEMS[ISL.mid].n)), d:L('空き地に金色の'+N(ISL.treeN)+'が育つ','A golden '+N(ISL.treeN)+' appears'), dis:()=>S.items[ISL.mid] < 10 || !S.cells.some(c=>c.t==='grass'), f:()=>{
       S.items[ISL.mid] -= 10; const g = S.cells.map((c,i)=>c.t==='grass'?i:-1).filter(i=>i>=0); const i = g[Math.floor(Math.random()*g.length)];
       S.cells[i] = {t:'tree', hp:P.treeHP, r:Math.random(), gold:true}; setCellMesh(i); CM[i].userData.pop = 0.5; story('金色の'+ISL.sapN[0]+'を譲り受けた','Received golden '+ISL.sapN[1]);
-      return {img:'balloon', title:L('金の木','A golden tree'), text:L('みるみる金色に育った。刈り取るかどうかはあなた次第。','It grew golden in no time. Whether to harvest it is up to you.')}; }},
+      return {img:'gold_tree', title:L('金の木','A golden tree'), text:L('みるみる金色に育った。刈り取るかどうかはあなた次第。','It grew golden in no time. Whether to harvest it is up to you.')}; }},
     {l:L('断る','Decline'), d:L('旅人は次の島へ','The traveler drifts on'), f:()=>{}},
   ]})},
   {id:'meteor', w:1.5, cond:()=>S.day >= 2, make:()=>({img:'meteor', title:L('流れ星の夜','A night of shooting stars'), text:L('今夜は流れ星がたくさん降るらしい。「みんなで願い事をしたい！」','Shooting stars tonight! "Let’s make wishes together!"'), opts:[
@@ -3068,7 +3068,7 @@ const EVENTS = [
     {l:L('島の手入れを頼む','Ask them to tend the island'), d:L('空き地に'+ISL.sapN[0]+'が6つ。よく通る道が踏み固められる。幸福 +3','6 '+ISL.sapN[1]+' on open land, busy paths get firmer. Happiness +3'), f:()=>{
       S.cells.map((c,i)=>c.t==='grass' && i !== WH ? i : -1).filter(i=>i>=0).sort(()=>Math.random()-.5).slice(0,6).forEach(i=>sprout(i));
       for (const k in S.routes) S.routes[k] = Math.min(1, S.routes[k] + 0.2); updatePaths(); addMood(3); story('住民と一緒に島を手入れした','Tended the island together');
-      return {img:'forest', title:L('島の手入れ','Tending the island'), text:L(ISL.sapN[0]+'を植え、道をならした。島が少し、みんなの場所になった。','New '+ISL.sapN[1]+' planted, paths smoothed. The island feels more like home.')}; }},
+      return {img:'island_care', title:L('島の手入れ','Tending the island'), text:L(ISL.sapN[0]+'を植え、道をならした。島が少し、みんなの場所になった。','New '+ISL.sapN[1]+' planted, paths smoothed. The island feels more like home.')}; }},
   ]})},
   {id:'unrest', w:4, cond:()=>S.mood <= 35 && S.day >= 3 && workerCount() >= 2, make:()=>{
     const cost = 60 + 25*workerCount();
@@ -3076,22 +3076,22 @@ const EVENTS = [
       {l:L('給料を上げる','Raise wages'), d:L('全員の日給 +2G（ずっと）。幸福 +12','Everyone’s wage +2G forever. Happiness +12'), f:()=>{ S.flags.wageBonus += 2; addMood(12); story('給料を上げて不満に応えた','Raised wages to calm the island');
         return {img:'wage_up', title:L('給料アップ！','A raise!'), text:L('住民たちの顔がぱっと明るくなった。','Faces light up all over the island.')}; }},
       {l:L('宴を開いて話を聞く（'+fmt(cost)+'G）','Hold a feast and listen ('+fmt(cost)+'G)'), d:L('幸福 +15（1回だけ）','Happiness +15 (once)'), dis:()=>S.gold < cost, f:()=>{ S.gold -= cost; addMood(15);
-        return {img:'festival_go', title:L('語り合いの宴','A feast of words'), text:L('料理を囲んで、ひと晩じゅう話し合った。','Over good food, everyone talked late into the night.')}; }},
+        return {img:'talk', title:L('語り合いの宴','A feast of words'), text:L('料理を囲んで、ひと晩じゅう話し合った。','Over good food, everyone talked late into the night.')}; }},
       {l:L('突っぱねる','Refuse'), d:L('幸福 -5。50%：今日はストライキで誰も働かない','Happiness -5. 50%: a strike, no work today'), f:()=>{ addMood(-5);
         if (Math.random() < 0.5){ S.strikeDay = S.day; story('住民がストライキを起こした','The residents went on strike'); return {img:'strike', title:L('ストライキ！','Strike!'), text:L('今日は誰も働かない。家の前でプラカードを掲げている。','No one works today. Signs are up in front of the houses.')}; }
-        return {img:'unrest', title:L('しぶしぶ仕事へ','Grudgingly back to work'), text:L('ぶつぶつ言いながらも、みんな持ち場に戻った。','Muttering, everyone went back to work.')}; }},
+        return {img:'unrest_go', title:L('しぶしぶ仕事へ','Grudgingly back to work'), text:L('ぶつぶつ言いながらも、みんな持ち場に戻った。','Muttering, everyone went back to work.')}; }},
     ]};
   }},
   {id:'nightorder', w:1.5, cond:()=>!S.nightShift && !S.nightOrder && S.day >= 4 && allB().some(i=>BUILD[S.cells[i].b.type]?.in && S.cells[i].b.workers), make:()=>({img:'nightorder', title:L('夜明けの特急便','The dawn express'), text:L('商人が「明日の朝いちばんの気球に、夜のうちに作った品を積みたい。いつもの1.45倍で買うよ」と言っている。','A merchant says: "Load what you craft tonight on tomorrow’s first balloon. I’ll pay 1.45× the usual."'), opts:[
     {l:L('今夜は夜勤！','Night shift tonight!'), d:L('今夜だけ夜勤ON（効率は昼の半分）。夜のあいだに作った加工品の値段の45%がボーナスで入る（品物は手元に残る）','Night shift ON just for tonight, at half efficiency. Bonus: 45% of the value of goods crafted overnight (you keep the goods)'), f:()=>{
       S.nightOrder = {day:S.day, prev:S.nightShift, snap:null}; S.nightShift = true; story('夜明けの特急便に挑んだ','Took on the dawn express');
-      return {img:'nightorder', title:L('今夜は夜なべ','Working through the night'), text:L('ランタンを灯して、夜通し働く。'+BUILD.bath.n[0]+'があると疲れが軽くなる。','Lanterns lit, the work goes on all night. Build a '+BUILD.bath.n[1]+' to ease the fatigue.')}; }},
+      return {img:'night_work', title:L('今夜は夜なべ','Working through the night'), text:L('ランタンを灯して、夜通し働く。'+BUILD.bath.n[0]+'があると疲れが軽くなる。','Lanterns lit, the work goes on all night. Build a '+BUILD.bath.n[1]+' to ease the fatigue.')}; }},
     {l:L('夜はしっかり休む','Rest at night'), d:L('幸福 +2','Happiness +2'), f:()=>{ addMood(2); }},
   ]})},
   {id:'bigvein', w:3, isl:'sky', cond:()=>S.flags.mine && S.res.ore < S.resTotal*0.5 && !S.doneEvents.bigvein, make:()=>{
     const cost = 600 + S.day*40;
-    return {img:'vein', title:L('眠れる大鉱脈','A sleeping great vein'), text:L('坑道の奥で、さらに大きな鉱脈が見つかった。掘り進めるには支柱を組む必要がある。','Deep in the shaft lies a much bigger vein. Shoring it up costs money.'), opts:[
-      {l:L('掘り進める（'+fmt(cost)+'G）','Dig deeper ('+fmt(cost)+'G)'), d:L('地下の鉄鉱石 +180（断面図が深くなる）','Underground ore +180 (the cutaway gets deeper)'), dis:()=>S.gold < cost, f:()=>{ S.gold -= cost; S.res.ore += 180; S.resTotal += 180; S.ugRows = 8; updateTiles(); story('大鉱脈を掘り当てた','Struck the great vein'); return {img:'mine', title:L('大鉱脈！','The great vein!'), text:L('坑道がさらに奥へ伸びた。しばらくは鉄に困らない。','The tunnels reach deeper. Iron will flow for a while.')}; }},
+    return {img:'deep_vein', title:L('眠れる大鉱脈','A sleeping great vein'), text:L('坑道の奥で、さらに大きな鉱脈が見つかった。掘り進めるには支柱を組む必要がある。','Deep in the shaft lies a much bigger vein. Shoring it up costs money.'), opts:[
+      {l:L('掘り進める（'+fmt(cost)+'G）','Dig deeper ('+fmt(cost)+'G)'), d:L('地下の鉄鉱石 +180（断面図が深くなる）','Underground ore +180 (the cutaway gets deeper)'), dis:()=>S.gold < cost, f:()=>{ S.gold -= cost; S.res.ore += 180; S.resTotal += 180; S.ugRows = 8; updateTiles(); story('大鉱脈を掘り当てた','Struck the great vein'); return {img:'great_vein', title:L('大鉱脈！','The great vein!'), text:L('坑道がさらに奥へ伸びた。しばらくは鉄に困らない。','The tunnels reach deeper. Iron will flow for a while.')}; }},
       {l:L('このままにする','Leave it'), d:L('今ある分だけを掘る','Mine only what remains'), f:()=>{}},
     ]};
   }},
@@ -3115,12 +3115,13 @@ function queueEvent(){
   S.lastEvent = ev.id; queuedIds[ev.id] = true;
   const E = ev.make(); E.id = ev.id; eventQueue.push(E);
 }
-const evImg = n => {          // @shot＝いまの島の写真（gfix が壊さないよう、src は後から入れる）
-  if (!n) return '';
-  if (n !== '@shot') return '<img class="evimg" src="assets/ev/'+n+'.jpg" alt="">';
-  queueMicrotask(() => { const im = document.querySelector('img[data-shot]'); if (im) im.src = snapIsland(640, 360).toDataURL('image/jpeg', 0.85); });
-  return '<img class="evimg" data-shot alt="">';
+// 島ごとに描き分けたイベント絵（assets/ev/<島>/）。無いものは共通の絵
+const EV_ART = {
+  dairy:new Set('airship airup1 airup2 airup3 artisan balloon breakdown calf_keep cheer contract contract_fail contract_ok crack_held d_breed d_calf d_craft d_holstein d_jersey d_meadow d_policy fair festival festival_go gold_tree grazing holiday island_care leave levistone loan meteor meteor_after meteor_wish night_work nightorder nightorder_ok overtime pirates pirates_lose pirates_win quake quit rival skycow steam stone_ok storm storm_lose storm_win strike talk tasting tasting_ng tasting_ok tired tired_go unrest unrest_go wage_up whale whale_rain'.split(' ')),
+  farm:new Set('airship airup1 airup2 airup3 artisan balloon breakdown cheer companion contract contract_fail contract_ok crack_held f_craft f_field f_policy f_rice f_seed f_sparrow f_wheat fair festival festival_go gold_tree holiday island_care leave levistone loan meteor meteor_after meteor_wish night_work nightorder nightorder_ok overtime pirates pirates_lose pirates_win quake quit rival sparrow_lose sparrow_win steam stone_ok storm storm_lose storm_win strike talk tired tired_go unrest unrest_go wage_up whale whale_rain'.split(' ')),
+  sky:new Set('breakdown deep_vein gold_tree great_vein island_care meteor_after night_work quit rest_forest talk tired_go unrest_go'.split(' ')),
 };
+const evImg = (n, isl = ISLAND) => !n ? '' : '<img class="evimg" src="assets/ev/'+(EV_ART[isl]?.has(n) ? isl+'/'+n+'.jpg' : n+'.jpg')+'" alt="">';
 let curEvent = null;
 function showEvent(E){
   const box = $('#modal .mbox');
@@ -4107,7 +4108,7 @@ function doAct(actStr, el){
     case 'drive': setDrive(+arg); break;
     case 'expand': expandIsland(arg); break;
     case 'airup': if (S.airport && S.airLvl < AIR_COST.length && S.gold >= AIR_COST[S.airLvl]){ S.gold -= AIR_COST[S.airLvl]; S.airLvl++; buildAirship(true); sfx('fanfare'); burst(airship.pad.x, 1.2, airship.pad.z, 'coin', 12);
-      eventQueue.push({result:true, img:ISLAND === 'sky' ? 'airship_up' : '@shot', title:L('飛行船、改装完了！','The airship is refitted!'), text:L('『'+FLV.air[S.airLvl][0]+'』に生まれ変わった。明日の朝から、もっと多くの観光客がやってくる。','It is now “'+FLV.air[S.airLvl][1]+'”. More tourists will come from tomorrow morning.')}); } break;
+      eventQueue.push({result:true, img:ISLAND === 'sky' ? 'airship_up' : 'airup'+S.airLvl, title:L('飛行船、改装完了！','The airship is refitted!'), text:L('『'+FLV.air[S.airLvl][0]+'』に生まれ変わった。明日の朝から、もっと多くの観光客がやってくる。','It is now “'+FLV.air[S.airLvl][1]+'”. More tourists will come from tomorrow morning.')}); } break;
     case 'ending': showEnding(); break;
     case 'confirmReset': confirmResetModal(); return;
     case 'restoreMenu': showRestore(); return;
@@ -4544,7 +4545,7 @@ function showTravel(to){
   if (!canTravel(to)) return;
   const first = !saveBox.islands[to], nm = N(islName(to));
   closePanel();
-  $('#modal .mbox').innerHTML = gfix('<h2>'+L(nm+'へ渡る','Travel to the '+nm)+'</h2>' + evImg('airship') +
+  $('#modal .mbox').innerHTML = gfix('<h2>'+L(nm+'へ渡る','Travel to the '+nm)+'</h2>' + evImg('airship', to) +
     '<p>'+(first ? L('新しい島は<b>'+fmt(P.startGold)+'G・住民0人</b>からのスタート。','The new island starts with <b>'+fmt(P.startGold)+'G and no residents</b>.') : L('前に離れたときのまま待っている。','It waits just as you left it.'))+'</p>' +
     '<p class="kv" style="color:var(--sub)">'+L('お金も住民も持ちこさない。今の島はこのまま残り、いつでも戻れる（留守のあいだ時間は止まる）。','Gold and residents stay here. This island remains as it is and you can return any time (time stops while you are away).')+'</p>' +
     '<div class="opts"><button class="opt" data-act="closeModal"><div class="n">◀ '+L('やめる','Stay here')+'</div></button><div style="height:10px"></div>' +
@@ -5162,7 +5163,7 @@ if (isFarm && !VISIT) migrateRiver();
 if (isFarm) calcTraffic();
 spawnCritters();
 // 放牧が入る前から遊んでいる酪農の島には、遊び方を一度だけ知らせる
-if (grazingIsNew && !S.arrived && S.day > 1) eventQueue.push({result:true, img:'d_meadow', title:L('放牧がはじまった','Grazing begins'), text:dairyGuide()});
+if (grazingIsNew && !S.arrived && S.day > 1) eventQueue.push({result:true, img:'grazing', title:L('放牧がはじまった','Grazing begins'), text:dairyGuide()});
 applySettings();
 renderTop();
 if (S.tut < 0) for (const e of EVENTS) if (e.fixed && islOk(e) && !S.doneEvents[e.id] && S.day >= e.fixed){ queuedIds[e.id] = true; const E = e.make(); E.id = e.id; eventQueue.push(E); }
